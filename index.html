@@ -216,7 +216,11 @@ function md(src){
 
 /* ---------- Données ---------- */
 async function loadArticles(){
-  const {data,error}=await withTimeout(S.sb.from("articles").select("*").order("created_at",{ascending:false}).limit(300),15000,"articles");
+  let data=null,error=null;
+  try{
+    const r=await withTimeout(fetch(SUPABASE_URL+"/rest/v1/articles?select=*&order=created_at.desc&limit=300",{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY}}),15000,"articles");
+    if(r.ok) data=await r.json(); else error={message:"code "+r.status+" "+(await r.text()).slice(0,120)};
+  }catch(e){error={message:e.message==="Failed to fetch"?"le site n'arrive pas à joindre la base (réseau ou bloqueur de publicité ?)":e.message}}
   S.loaded=true;
   if(error){S.error="Impossible de charger les articles ("+error.message+")."}
   else{S.error=null;S.articles=data}
@@ -558,7 +562,7 @@ const withTimeout=(p,ms,label)=>Promise.race([p,new Promise((_,rej)=>setTimeout(
     S.loaded=true; S.error="Le module de connexion n'a pas pu se charger. Vérifiez votre connexion internet puis rechargez la page.";
     render(); return;
   }
-  try{ S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY); }
+  try{ S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,lock:async(_name,_timeout,fn)=>await fn()}}); }
   catch(e){ S.loaded=true; S.error="Connexion à la base impossible ("+e.message+")."; render(); return; }
   const h=location.hash.slice(1); if(h==="rejoindre"){S.view="rejoindre"} else if(h){S.view="article";S.openId=h}
   render();
