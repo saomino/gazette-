@@ -162,7 +162,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 /* ===================================================== */
 
 const CATS=["Annonce","Tuto","Événement","Stratégie","Divers"];
-const S={sb:null,session:null,admin:false,articles:[],loaded:false,error:null,view:"list",cat:"Tout",openId:null,draft:null,salon:[],salonTimer:null};
+const S={sb:null,session:null,me:null,admin:false,chef:false,team:[],articles:[],loaded:false,error:null,view:"list",cat:"Tout",openId:null,draft:null,salon:[],salonTimer:null};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtDate=t=>new Date(t).toLocaleDateString("fr-BE",{day:"numeric",month:"long",year:"numeric"});
@@ -170,7 +170,7 @@ const fmtTime=t=>new Date(t).toLocaleString("fr-BE",{day:"numeric",month:"short"
 function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._);toast._=setTimeout(()=>t.hidden=true,2800)}
 $("#today").textContent=new Date().toLocaleDateString("fr-BE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
-const pseudo=()=>(S.session&&S.session.user.user_metadata&&S.session.user.user_metadata.pseudo)||"";
+const pseudo=()=>(S.me&&S.me.pseudo)||"";
 const imgUrl=path=>/^https?:\/\//.test(path)?path:S.sb.storage.from("images").getPublicUrl(path).data.publicUrl;
 
 /* ---------- Images ---------- */
@@ -216,7 +216,7 @@ function md(src){
 
 /* ---------- Données ---------- */
 async function loadArticles(){
-  const {data,error}=await S.sb.from("articles").select("*").order("created_at",{ascending:false}).limit(300);
+  const {data,error}=await withTimeout(S.sb.from("articles").select("*").order("created_at",{ascending:false}).limit(300),15000,"articles");
   S.loaded=true;
   if(error){S.error="Impossible de charger les articles ("+error.message+")."}
   else{S.error=null;S.articles=data}
@@ -229,17 +229,23 @@ function renderNav(){
   const mk=(label,pressed,fn)=>{const b=document.createElement("button");b.className="chip";b.textContent=label;b.setAttribute("aria-pressed",pressed);b.onclick=fn;n.appendChild(b)};
   ["Tout",...CATS].forEach(c=>mk(c==="Tout"?"À la une":(c==="Divers"?"Divers":c+"s"),S.view==="list"&&S.cat===c,()=>{S.view="list";S.cat=c;render()}));
   if(S.admin) mk("Salon des admins",S.view==="salon",()=>{S.view="salon";render()});
+  if(S.chef){const n2=S.team.filter(x=>x.status==="en_attente").length;mk("Équipe"+(n2?" ("+n2+" demande"+(n2>1?"s":"")+")":""),S.view==="equipe",()=>{S.view="equipe";render()})}
   const sp=document.createElement("span");sp.className="spacer";n.appendChild(sp);
   if(S.admin){const b=document.createElement("button");b.className="btn";b.textContent="Écrire un article";b.onclick=()=>openEditor(null);n.appendChild(b)}
   const al=$("#authLink"); al.innerHTML="";
-  const b=document.createElement("button");
-  if(S.admin){b.textContent="Déconnexion ("+(pseudo()||S.session.user.email)+")";b.onclick=async()=>{await S.sb.auth.signOut();S.view="list";toast("Déconnecté")}}
-  else{b.textContent="Connexion admin";b.onclick=()=>{S.view="login";render();scrollTo(0,0)}}
-  al.appendChild(b);
+  const addL=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.onclick=fn;b.style.marginLeft="14px";al.appendChild(b)};
+  if(S.session){
+    addL("Mon compte",()=>{S.view="compte";render();scrollTo(0,0)});
+    addL("Déconnexion",async()=>{await S.sb.auth.signOut();S.view="list";toast("Déconnecté")});
+  } else addL("Connexion admin",()=>{S.view="login";render();scrollTo(0,0)});
   const pb=$("#pseudoBox");
-  if(S.admin&&!pseudo()){
+  if(S.session&&S.me&&S.me.status==="en_attente"){
+    pb.innerHTML=`<div class="notice">Votre demande pour devenir admin est envoyée. Le chef de la Gazette doit la valider : revenez un peu plus tard.</div>`;
+  } else if(S.session&&!S.admin&&S.meLoaded){
+    pb.innerHTML=`<div class="notice">Ce compte n'a pas (ou plus) les droits d'admin sur la Gazette.</div>`;
+  } else if(S.admin&&!pseudo()){
     pb.innerHTML=`<form class="pseudo" id="pf"><label class="mono" for="f-pseudo">Votre pseudo d'auteur</label><input id="f-pseudo" maxlength="40" placeholder="Ex. : Kael" required><button class="btn" type="submit">Enregistrer</button></form>`;
-    $("#pf").onsubmit=async e=>{e.preventDefault();const v=$("#f-pseudo").value.trim();if(!v)return;const {error}=await S.sb.auth.updateUser({data:{pseudo:v}});if(error)toast("Erreur : "+error.message);else toast("Pseudo enregistré")};
+    $("#pf").onsubmit=async e=>{e.preventDefault();const v=$("#f-pseudo").value.trim();if(!v)return;await savePseudo(v)};
   } else pb.innerHTML="";
 }
 function render(){
@@ -247,6 +253,9 @@ function render(){
   renderNav();
   const m=$("#main");
   if(S.view==="login") return renderLogin(m);
+  if(S.view==="rejoindre") return renderJoin(m);
+  if(S.view==="compte"&&S.session) return renderCompte(m);
+  if(S.view==="equipe"&&S.chef) return renderEquipe(m);
   if(S.view==="article") return renderArticle(m);
   if(S.view==="editor"&&S.admin) return renderEditor(m);
   if(S.view==="salon"&&S.admin) return renderSalon(m);
@@ -297,12 +306,14 @@ function renderArticle(m){
 
 /* ---------- Connexion ---------- */
 function renderLogin(m){
-  if(S.admin){S.view="list";return render()}
+  if(S.session){S.view="list";return render()}
   m.innerHTML=`<form class="login" id="lf"><h2>Connexion admin</h2><p class="hint" style="margin:0">Réservé aux administrateurs de l'alliance. Les lecteurs n'ont pas besoin de compte.</p>
   <div class="field"><label class="mono" for="f-email">E-mail</label><input id="f-email" type="email" autocomplete="username" required></div>
   <div class="field"><label class="mono" for="f-pass">Mot de passe</label><input id="f-pass" type="password" autocomplete="current-password" required></div>
   <div class="err" id="lerr"></div>
-  <div class="row"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" id="lback">Annuler</button></div></form>`;
+  <div class="row"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" id="lback">Annuler</button></div>
+  <p class="hint">Pas encore admin ? <a href="#rejoindre" id="tojoin" style="color:var(--accent)">Faire une demande</a></p></form>`;
+  $("#tojoin").onclick=e=>{e.preventDefault();S.view="rejoindre";location.hash="rejoindre";render()};
   $("#lback").onclick=()=>{S.view="list";render()};
   $("#lf").onsubmit=async e=>{
     e.preventDefault(); $("#lerr").textContent="";
@@ -310,6 +321,106 @@ function renderLogin(m){
     if(error) $("#lerr").textContent="Connexion refusée : vérifiez l'e-mail et le mot de passe.";
     else {S.view="list";toast("Connecté")}
   };
+}
+
+
+/* ---------- Comptes, demandes et équipe ---------- */
+async function loadMe(){
+  S.me=null;S.admin=false;S.chef=false;S.meLoaded=false;
+  if(!S.session){S.team=[];return}
+  const {data}=await S.sb.from("admins").select("*").eq("id",S.session.user.id).maybeSingle();
+  S.me=data||null; S.meLoaded=true;
+  S.admin=!!data&&(data.status==="admin"||data.status==="chef");
+  S.chef=!!data&&data.status==="chef";
+  if(S.chef) await loadTeam(); else S.team=[];
+}
+async function loadTeam(){
+  const {data}=await S.sb.from("admins").select("*").order("created_at",{ascending:true});
+  S.team=data||[];
+}
+async function savePseudo(v){
+  const {error}=await S.sb.from("admins").update({pseudo:v}).eq("id",S.session.user.id);
+  if(error) return toast("Erreur : "+error.message);
+  S.me={...S.me,pseudo:v}; toast("Pseudo enregistré"); render();
+}
+function renderJoin(m){
+  if(S.session){S.view="list";return render()}
+  m.innerHTML=`<form class="login" id="jf"><h2>Devenir admin</h2>
+  <p class="hint" style="margin:0">Remplissez ce formulaire : votre demande sera envoyée au chef de la Gazette. Vous pourrez publier dès qu'il l'aura acceptée.</p>
+  <div class="field"><label class="mono" for="j-pseudo">Pseudo (celui du jeu)</label><input id="j-pseudo" maxlength="40" required></div>
+  <div class="field"><label class="mono" for="j-email">E-mail</label><input id="j-email" type="email" autocomplete="username" required></div>
+  <div class="field"><label class="mono" for="j-pass">Mot de passe (8 caractères minimum)</label><input id="j-pass" type="password" minlength="8" autocomplete="new-password" required></div>
+  <div class="field"><label class="mono" for="j-pass2">Confirmer le mot de passe</label><input id="j-pass2" type="password" minlength="8" autocomplete="new-password" required></div>
+  <div class="err" id="jerr"></div>
+  <div class="row"><button class="btn" type="submit" id="jbtn">Envoyer ma demande</button><button class="btn ghost" type="button" id="jback">Annuler</button></div></form>`;
+  $("#jback").onclick=()=>{S.view="list";history.replaceState(null,"",location.pathname);render()};
+  $("#jf").onsubmit=async e=>{
+    e.preventDefault(); const err=$("#jerr"); err.textContent="";
+    const ps=$("#j-pseudo").value.trim(), em=$("#j-email").value.trim(), p1=$("#j-pass").value, p2=$("#j-pass2").value;
+    if(p1!==p2){err.textContent="Les deux mots de passe ne sont pas identiques.";return}
+    $("#jbtn").disabled=true;
+    const {data,error}=await S.sb.auth.signUp({email:em,password:p1,options:{data:{pseudo:ps}}});
+    $("#jbtn").disabled=false;
+    if(error){err.textContent=/registered|exists/i.test(error.message)?"Cette adresse a déjà un compte : utilisez « Connexion admin ».":/signups? not allowed|disabled/i.test(error.message)?"Les demandes sont fermées pour le moment. Contactez le chef de la Gazette.":"Demande impossible : "+error.message;return}
+    history.replaceState(null,"",location.pathname);
+    if(!data.session){m.innerHTML=`<div class="login"><h2>Presque fini</h2><p>Un e-mail de confirmation vous a été envoyé. Cliquez sur le lien qu'il contient, puis connectez-vous avec « Connexion admin ».</p></div>`;return}
+    toast("Demande envoyée"); S.view="list";
+  };
+}
+function renderCompte(m){
+  m.innerHTML=`<div class="login"><h2>Mon compte</h2>
+  <p class="hint" style="margin:0">${esc(S.session.user.email)} · ${S.chef?"Chef de la Gazette":S.admin?"Administrateur":"Demande en attente"}</p>
+  <form class="field" id="cp"><label class="mono" for="c-pseudo">Pseudo d'auteur</label><div class="send"><input id="c-pseudo" maxlength="40" value="${esc(pseudo())}" style="flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px"><button class="btn" type="submit">Enregistrer</button></div></form>
+  <form class="field" id="cw"><label class="mono" for="c-pass">Nouveau mot de passe (8 caractères minimum)</label><input id="c-pass" type="password" minlength="8" autocomplete="new-password" required><input id="c-pass2" type="password" minlength="8" autocomplete="new-password" placeholder="Confirmer" required><div class="err" id="cerr"></div><div><button class="btn" type="submit">Changer le mot de passe</button></div></form>
+  <div><button class="btn ghost" id="cback">← Retour à la une</button></div></div>`;
+  $("#cback").onclick=()=>{S.view="list";render()};
+  $("#cp").onsubmit=async e=>{e.preventDefault();const v=$("#c-pseudo").value.trim();if(v)await savePseudo(v)};
+  $("#cw").onsubmit=async e=>{
+    e.preventDefault();const a=$("#c-pass").value,b=$("#c-pass2").value;
+    if(a!==b){$("#cerr").textContent="Les deux mots de passe ne sont pas identiques.";return}
+    const {error}=await S.sb.auth.updateUser({password:a});
+    if(error) $("#cerr").textContent="Changement impossible : "+error.message; else {$("#cerr").textContent="";$("#c-pass").value="";$("#c-pass2").value="";toast("Mot de passe changé")}
+  };
+}
+function renderEquipe(m){
+  const link=location.origin+location.pathname+"#rejoindre";
+  const wait=S.team.filter(x=>x.status==="en_attente"), team=S.team.filter(x=>x.status==="admin"||x.status==="chef");
+  const row=(x,btns)=>`<div class="msg" style="grid-template-columns:1fr auto;align-items:center"><div style="min-width:0"><span class="who"></span> <span class="when"></span><div class="hint mail"></div></div><div class="row" style="gap:6px">${btns}</div></div>`;
+  m.innerHTML=`<div class="salon"><h2>Équipe de la Gazette</h2>
+  <div class="field"><span class="mono" style="color:var(--muted)">Lien à envoyer aux futurs admins</span>
+  <div class="send"><input id="e-link" readonly value="${esc(link)}" style="flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px"><button class="btn" id="e-copy">Copier</button></div>
+  <span class="hint">La personne remplit le formulaire, puis sa demande apparaît ici. Rien ne se passe sans votre accord.</span></div>
+  <h3 class="mono" style="margin:10px 0 0">Demandes en attente (${wait.length})</h3>
+  <div class="msgs" id="e-wait"></div>
+  <h3 class="mono" style="margin:10px 0 0">Administrateurs (${team.length})</h3>
+  <div class="msgs" id="e-team"></div></div>`;
+  $("#e-copy").onclick=async()=>{try{await navigator.clipboard.writeText(link);toast("Lien copié")}catch(e){$("#e-link").select();toast("Sélectionnez le lien et copiez-le")}};
+  const fill=(box,list,mkBtns,empty)=>{
+    box.innerHTML=list.length?"":`<p class="hint" style="margin:0">${empty}</p>`;
+    list.forEach(x=>{
+      const d=document.createElement("div"); d.innerHTML=row(x,mkBtns(x)); const r=d.firstElementChild;
+      r.querySelector(".who").textContent=x.pseudo||"(sans pseudo)";
+      r.querySelector(".when").textContent=x.status==="chef"?"· chef":"· "+fmtDate(x.created_at);
+      r.querySelector(".mail").textContent=x.email||"";
+      r.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>act(b.dataset.act,x,r));
+      box.appendChild(r);
+    });
+  };
+  fill($("#e-wait"),wait,()=>`<button class="btn" data-act="ok">Accepter</button><button class="btn danger" data-act="no">Refuser</button>`,"Aucune demande pour le moment.");
+  fill($("#e-team"),team,x=>x.status==="chef"?"":`<button class="btn danger" data-act="del">Retirer</button>`,"Aucun admin.");
+}
+async function act(kind,x,rowEl){
+  if(kind==="del"||kind==="no"){
+    const box=rowEl.querySelector(".row");
+    if(!box.dataset.confirm){box.dataset.confirm="1";box.innerHTML=`<span class="hint">${kind==="del"?"Retirer":"Refuser"} ?</span><button class="btn danger" data-c="y">Oui</button><button class="btn ghost" data-c="n">Non</button>`;
+      box.querySelector('[data-c="n"]').onclick=()=>render();
+      box.querySelector('[data-c="y"]').onclick=()=>act(kind+"!",x,rowEl);return}
+  }
+  const fn=kind==="ok"?"accepter_admin":"retirer_admin";
+  const {error}=await S.sb.rpc(fn,{uid:x.id});
+  if(error) return toast("Action impossible : "+error.message);
+  toast(kind==="ok"?"Admin accepté":kind==="no!"?"Demande refusée":"Admin retiré");
+  await loadTeam(); render();
 }
 
 /* ---------- Éditeur ---------- */
@@ -433,18 +544,36 @@ function drawMsgs(){
 }
 
 /* ---------- Démarrage ---------- */
+function showDiag(msg){
+  let d=document.getElementById("diag");
+  if(!d){d=document.createElement("div");d.id="diag";d.className="notice mono";d.style.fontSize="12px";d.style.textTransform="none";document.querySelector(".wrap").appendChild(d)}
+  const line=document.createElement("div");line.textContent="Problème technique : "+msg;d.appendChild(line);
+}
+window.addEventListener("error",e=>showDiag((e.message||"erreur")+(e.filename?" ("+e.filename.split("/").pop()+":"+e.lineno+")":"")));
+window.addEventListener("unhandledrejection",e=>showDiag(String((e.reason&&e.reason.message)||e.reason)));
+const withTimeout=(p,ms,label)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+" : pas de réponse après "+ms/1000+" s")),ms))]);
 (async()=>{
-  if(!window.supabase||SUPABASE_URL.startsWith("COLLE")){
-    S.loaded=true; S.error="Le site n'est pas encore configuré : collez l'URL et la clé Supabase en haut du fichier index.html.";
+  render();
+  if(!window.supabase){
+    S.loaded=true; S.error="Le module de connexion n'a pas pu se charger. Vérifiez votre connexion internet puis rechargez la page.";
     render(); return;
   }
-  S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-  const h=location.hash.slice(1); if(h){S.view="article";S.openId=h}
-  const {data}=await S.sb.auth.getSession();
-  S.session=data.session; S.admin=!!S.session;
-  S.sb.auth.onAuthStateChange((_e,session)=>{S.session=session;S.admin=!!session;if(S.view!=="editor")render()});
+  try{ S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY); }
+  catch(e){ S.loaded=true; S.error="Connexion à la base impossible ("+e.message+")."; render(); return; }
+  const h=location.hash.slice(1); if(h==="rejoindre"){S.view="rejoindre"} else if(h){S.view="article";S.openId=h}
   render();
-  loadArticles();
+  loadArticles().catch(e=>{S.loaded=true;S.error="Impossible de charger les articles ("+e.message+").";render()});
+  try{
+    const r=await withTimeout(S.sb.auth.getSession(),10000,"session");
+    S.session=r.data.session;
+    await withTimeout(loadMe(),10000,"profil");
+  }catch(e){ showDiag(e.message); }
+  S.sb.auth.onAuthStateChange((ev,session)=>{
+    const changed=(session&&session.user.id)!==(S.session&&S.session.user.id);
+    S.session=session;
+    if(changed||ev==="SIGNED_OUT"){setTimeout(async()=>{try{await loadMe()}catch(e){showDiag(e.message)}if(S.view!=="editor")render()},0)}
+  });
+  if(S.view!=="editor") render();
 })();
 </script>
 </body>
