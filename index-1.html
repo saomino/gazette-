@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>La Gazette de LGS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: alliance dispatch board. Masthead + rubric rail, one lead story, then a grid of dispatches. Ink-blue ground, signal-brass accent. */
+:root{
+  --bg:#eef0f3; --paper:#ffffff; --ink:#151b26; --muted:#5b6474; --line:#d5d9e1;
+  --accent:#b07a12; --accent-ink:#ffffff; --soft:#f6efe0; --danger:#b3261e; --ok:#2e7d4f;
+  --display:"Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141c; --paper:#171e29; --ink:#e7eaf0; --muted:#9aa3b2; --line:#2a3342;
+  --accent:#e2a93b; --accent-ink:#17120a; --soft:#2a2414; --danger:#ff8a80; --ok:#7fd3a0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141c; --paper:#171e29; --ink:#e7eaf0; --muted:#9aa3b2; --line:#2a3342;
+  --accent:#e2a93b; --accent-ink:#17120a; --soft:#2a2414; --danger:#ff8a80; --ok:#7fd3a0; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:20px;padding-block:0 60px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+
+/* Masthead */
+.mast{border-bottom:3px solid var(--ink);padding-block:26px 14px;display:grid;gap:10px}
+.mast-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted)}
+.mast h1{font-family:var(--display);font-weight:900;font-size:clamp(46px,10vw,104px);line-height:.88;margin:0;letter-spacing:-.01em;text-transform:uppercase;text-wrap:balance}
+.mast h1 span{color:var(--accent)}
+.nav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-block:12px;border-bottom:1px solid var(--line)}
+.chip{border:1px solid var(--line);background:var(--paper);padding:6px 12px;border-radius:999px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.nav .spacer{flex:1}
+.btn{border:0;background:var(--accent);color:var(--accent-ink);padding:9px 16px;border-radius:6px;font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.04em}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+
+/* Lead + grid */
+.lead{display:grid;grid-template-columns:1.35fr 1fr;gap:28px;padding-block:28px;border-bottom:1px solid var(--line);cursor:pointer}
+.lead .img{aspect-ratio:16/10;max-width:100%;background:var(--soft);border-radius:4px;overflow:hidden}
+.lead .img img,.card .img img{width:100%;height:100%;object-fit:cover;display:block}
+.lead h2{font-family:var(--display);font-weight:700;font-size:clamp(32px,4.5vw,52px);line-height:.98;margin:8px 0 12px;text-transform:uppercase;text-wrap:balance}
+.lead p{margin:0;color:var(--muted)}
+.tag{color:var(--accent);font-weight:600}
+.meta{color:var(--muted);margin-top:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:28px 24px;padding-block:28px}
+.card{cursor:pointer;display:grid;gap:8px;align-content:start;min-width:0}
+.card .img{aspect-ratio:3/2;background:var(--soft);border-radius:4px;overflow:hidden}
+.card h3{font-family:var(--display);font-weight:700;font-size:28px;line-height:1;margin:0;text-transform:uppercase;text-wrap:balance}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.card:hover h3,.lead:hover h2{color:var(--accent)}
+.noimg{display:grid;place-items:center;height:100%;font-family:var(--display);font-size:42px;color:var(--accent);opacity:.6}
+
+.empty{padding-block:60px;max-width:560px}
+.empty h2{font-family:var(--display);font-size:40px;text-transform:uppercase;margin:0 0 8px}
+.empty p{color:var(--muted)}
+
+/* Article */
+.article{max-width:720px;margin:0 auto;padding-block:28px}
+.article h1{font-family:var(--display);font-weight:900;font-size:clamp(40px,7vw,72px);line-height:.92;margin:10px 0 14px;text-transform:uppercase;text-wrap:balance}
+.article .deck{font-size:21px;color:var(--muted);font-style:italic;margin:0 0 18px}
+.article .byline{display:flex;gap:10px;align-items:center;border-block:1px solid var(--line);padding-block:10px;margin-bottom:24px;color:var(--muted)}
+.byline img{width:28px;height:28px;border-radius:50%}
+.prose{min-width:0}
+.prose h2{font-family:var(--display);font-size:32px;text-transform:uppercase;margin:32px 0 8px;line-height:1}
+.prose h3{font-family:var(--display);font-size:24px;text-transform:uppercase;margin:24px 0 6px}
+.prose p{margin:0 0 16px;max-width:65ch}
+.prose blockquote{margin:0 0 16px;padding:12px 16px;background:var(--soft);border-radius:4px}
+.prose code{font-family:var(--mono);font-size:14px;background:var(--soft);padding:1px 5px;border-radius:3px}
+.prose a{color:var(--accent)}
+.prose ul,.prose ol{padding-left:22px;margin:0 0 16px}
+.prose figure{margin:20px 0}
+.prose figure img{width:100%;border-radius:4px;display:block;background:var(--soft);min-height:60px}
+.back{background:none;border:0;padding:0;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:30px;padding-top:16px;border-top:1px solid var(--line)}
+
+/* Editor */
+.editor{max-width:820px;margin:0 auto;padding-block:28px;display:grid;gap:14px}
+.editor h2{font-family:var(--display);font-size:40px;text-transform:uppercase;margin:0}
+.field{display:grid;gap:6px}
+.field label{color:var(--muted)}
+.field input,.field select,.field textarea{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px;width:100%}
+.field textarea{min-height:340px;font-family:var(--mono);font-size:14px;line-height:1.6;resize:vertical}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row>.field{flex:1 1 220px}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar button{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-family:var(--mono);font-size:12px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.thumbs .t{position:relative;width:96px;height:72px;border-radius:4px;overflow:hidden;border:2px solid transparent;background:var(--soft)}
+.thumbs .t.cover{border-color:var(--accent)}
+.thumbs .t img{width:100%;height:100%;object-fit:cover}
+.thumbs .t button{position:absolute;inset:auto 0 0 0;border:0;background:rgba(0,0,0,.6);color:#fff;font-family:var(--mono);font-size:10px;padding:2px}
+.hint{color:var(--muted);font-size:14px}
+.preview{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--soft);padding:10px 12px;border-radius:6px}
+
+/* Salon */
+.salon{max-width:760px;margin:0 auto;padding-block:28px;display:grid;gap:14px}
+.salon h2{font-family:var(--display);font-size:40px;text-transform:uppercase;margin:0}
+.msgs{display:grid;gap:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;max-height:60vh;overflow:auto}
+.msg{display:grid;grid-template-columns:32px 1fr;gap:10px}
+.msg img{width:32px;height:32px;border-radius:50%}
+.msg .who{font-weight:600}
+.msg .when{color:var(--muted);font-family:var(--mono);font-size:11px;margin-left:6px}
+.msg .txt{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+.send{display:flex;gap:8px}
+.send textarea{flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px;min-height:48px;resize:vertical}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-family:var(--mono);font-size:13px;z-index:10}
+.notice{background:var(--soft);padding:12px 16px;border-radius:6px;margin-top:20px;font-size:15px}
+
+@media (max-width:720px){
+  .lead{grid-template-columns:1fr}
+  .wrap{padding-inline:16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<style>
+html,body{margin:0}
+body{-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+[hidden]{display:none!important}
+.foot{border-top:1px solid var(--line);margin-top:40px;padding-block:18px;display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;align-items:center;color:var(--muted)}
+.foot button{background:none;border:0;color:var(--muted);text-decoration:underline;padding:0}
+.login{max-width:420px;margin:0 auto;padding-block:40px;display:grid;gap:14px}
+.login h2{font-family:var(--display);font-size:40px;text-transform:uppercase;margin:0}
+.err{color:var(--danger);font-size:15px}
+.pseudo{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--soft);padding:10px 12px;border-radius:6px;margin-top:14px}
+.pseudo input{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px;flex:1 1 180px;min-width:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="mast-top mono"><span id="issue">Édition n° —</span><span id="today"></span></div>
+    <h1>La Gazette <span>de LGS</span></h1>
+    <div class="mono" style="color:var(--muted)">Le journal de l'alliance · annonces, tutos, événements</div>
+  </header>
+  <nav class="nav" id="nav"></nav>
+  <div id="pseudoBox"></div>
+  <main id="main"></main>
+  <footer class="foot mono"><span>La Gazette de LGS</span><span id="authLink"></span></footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* =====================================================
+   CONFIGURATION — colle ici les 2 valeurs de Supabase
+   (Project Settings > API : "Project URL" et "anon public")
+   ===================================================== */
+const SUPABASE_URL = "https://jybmtbzctuftbcpecddd.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5Ym10YnpjdHVmdGJjcGVjZGRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MzYzMTAsImV4cCI6MjEwNzMxMjMxMH0.gMyLoGzjwx8OzqJSCN45XZwXXgjvzNOQbnoCzaGC8v0";
+/* ===================================================== */
+
+const CATS=["Annonce","Tuto","Événement","Stratégie","Divers"];
+const S={sb:null,session:null,me:null,admin:false,chef:false,team:[],articles:[],loaded:false,error:null,view:"list",cat:"Tout",openId:null,draft:null,salon:[],salonTimer:null};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDate=t=>new Date(t).toLocaleDateString("fr-BE",{day:"numeric",month:"long",year:"numeric"});
+const fmtTime=t=>new Date(t).toLocaleString("fr-BE",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._);toast._=setTimeout(()=>t.hidden=true,2800)}
+$("#today").textContent=new Date().toLocaleDateString("fr-BE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+const pseudo=()=>(S.me&&S.me.pseudo)||"";
+const imgUrl=path=>/^https?:\/\//.test(path)?path:S.sb.storage.from("images").getPublicUrl(path).data.publicUrl;
+
+/* ---------- Images ---------- */
+function compress(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file); const im=new Image();
+    im.onload=()=>{
+      const r=Math.min(1,1800/Math.max(im.width,im.height));
+      const c=document.createElement("canvas"); c.width=Math.round(im.width*r); c.height=Math.round(im.height*r);
+      const ctx=c.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(im,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b=>b?res(b):rej(new Error("Conversion impossible")),"image/jpeg",.85);
+    };
+    im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("Ce fichier n'est pas une image lisible."))};
+    im.src=url;
+  });
+}
+
+/* ---------- Mini markdown ---------- */
+function inline(s){
+  return esc(s).replace(/`([^`]+)`/g,"<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g,"<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function md(src){
+  const lines=String(src||"").replace(/\r/g,"").split("\n"); let html="",para=[],list=null;
+  const flushP=()=>{if(para.length){html+="<p>"+inline(para.join(" "))+"</p>";para=[]}};
+  const flushL=()=>{if(list){html+=`<${list.t}>`+list.items.map(i=>"<li>"+inline(i)+"</li>").join("")+`</${list.t}>`;list=null}};
+  for(const raw of lines){
+    const l=raw.trim(); let m;
+    if(!l){flushP();flushL();continue}
+    if((m=l.match(/^\[image:([^\]\s"'<>]+)\]$/))){flushP();flushL();html+=`<figure><img src="${esc(imgUrl(m[1]))}" alt="" loading="lazy"></figure>`;continue}
+    if(l.startsWith("### ")){flushP();flushL();html+="<h3>"+inline(l.slice(4))+"</h3>";continue}
+    if(l.startsWith("## ")){flushP();flushL();html+="<h2>"+inline(l.slice(3))+"</h2>";continue}
+    if(l.startsWith("> ")){flushP();flushL();html+="<blockquote>"+inline(l.slice(2))+"</blockquote>";continue}
+    if((m=l.match(/^[-*] (.*)$/))){flushP();if(!list||list.t!=="ul"){flushL();list={t:"ul",items:[]}}list.items.push(m[1]);continue}
+    if((m=l.match(/^\d+[.)] (.*)$/))){flushP();if(!list||list.t!=="ol"){flushL();list={t:"ol",items:[]}}list.items.push(m[1]);continue}
+    flushL(); para.push(l);
+  }
+  flushP();flushL(); return html;
+}
+
+/* ---------- Données ---------- */
+async function loadArticles(){
+  const {data,error}=await S.sb.from("articles").select("*").order("created_at",{ascending:false}).limit(300);
+  S.loaded=true;
+  if(error){S.error="Impossible de charger les articles ("+error.message+")."}
+  else{S.error=null;S.articles=data}
+  if(S.view!=="editor") render();
+}
+
+/* ---------- Rendu ---------- */
+function renderNav(){
+  const n=$("#nav"); n.innerHTML="";
+  const mk=(label,pressed,fn)=>{const b=document.createElement("button");b.className="chip";b.textContent=label;b.setAttribute("aria-pressed",pressed);b.onclick=fn;n.appendChild(b)};
+  ["Tout",...CATS].forEach(c=>mk(c==="Tout"?"À la une":(c==="Divers"?"Divers":c+"s"),S.view==="list"&&S.cat===c,()=>{S.view="list";S.cat=c;render()}));
+  if(S.admin) mk("Salon des admins",S.view==="salon",()=>{S.view="salon";render()});
+  if(S.chef){const n2=S.team.filter(x=>x.status==="en_attente").length;mk("Équipe"+(n2?" ("+n2+" demande"+(n2>1?"s":"")+")":""),S.view==="equipe",()=>{S.view="equipe";render()})}
+  const sp=document.createElement("span");sp.className="spacer";n.appendChild(sp);
+  if(S.admin){const b=document.createElement("button");b.className="btn";b.textContent="Écrire un article";b.onclick=()=>openEditor(null);n.appendChild(b)}
+  const al=$("#authLink"); al.innerHTML="";
+  const addL=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.onclick=fn;b.style.marginLeft="14px";al.appendChild(b)};
+  if(S.session){
+    addL("Mon compte",()=>{S.view="compte";render();scrollTo(0,0)});
+    addL("Déconnexion",async()=>{await S.sb.auth.signOut();S.view="list";toast("Déconnecté")});
+  } else addL("Connexion admin",()=>{S.view="login";render();scrollTo(0,0)});
+  const pb=$("#pseudoBox");
+  if(S.session&&S.me&&S.me.status==="en_attente"){
+    pb.innerHTML=`<div class="notice">Votre demande pour devenir admin est envoyée. Le chef de la Gazette doit la valider : revenez un peu plus tard.</div>`;
+  } else if(S.session&&!S.admin&&S.meLoaded){
+    pb.innerHTML=`<div class="notice">Ce compte n'a pas (ou plus) les droits d'admin sur la Gazette.</div>`;
+  } else if(S.admin&&!pseudo()){
+    pb.innerHTML=`<form class="pseudo" id="pf"><label class="mono" for="f-pseudo">Votre pseudo d'auteur</label><input id="f-pseudo" maxlength="40" placeholder="Ex. : Kael" required><button class="btn" type="submit">Enregistrer</button></form>`;
+    $("#pf").onsubmit=async e=>{e.preventDefault();const v=$("#f-pseudo").value.trim();if(!v)return;await savePseudo(v)};
+  } else pb.innerHTML="";
+}
+function render(){
+  $("#issue").textContent="Édition n° "+(S.articles.length||"—");
+  renderNav();
+  const m=$("#main");
+  if(S.view==="login") return renderLogin(m);
+  if(S.view==="rejoindre") return renderJoin(m);
+  if(S.view==="compte"&&S.session) return renderCompte(m);
+  if(S.view==="equipe"&&S.chef) return renderEquipe(m);
+  if(S.view==="article") return renderArticle(m);
+  if(S.view==="editor"&&S.admin) return renderEditor(m);
+  if(S.view==="salon"&&S.admin) return renderSalon(m);
+  S.view="list"; renderList(m);
+}
+const cover=a=>a.cover?`<div class="img"><img src="${esc(imgUrl(a.cover))}" alt="" loading="lazy"></div>`:`<div class="img"><div class="noimg">LGS</div></div>`;
+function renderList(m){
+  if(!S.loaded){m.innerHTML=`<div class="empty"><p class="mono">Chargement de la gazette…</p></div>`;return}
+  if(S.error){m.innerHTML=`<div class="empty"><h2>Gazette indisponible</h2><p>${esc(S.error)}</p></div>`;return}
+  const list=S.articles.filter(a=>S.cat==="Tout"||a.cat===S.cat);
+  if(!list.length){
+    m.innerHTML=`<div class="empty"><h2>${S.cat==="Tout"?"Rien sous presse pour l'instant":"Aucun article dans cette rubrique"}</h2>
+    <p>${S.admin?"Les articles que vous publiez apparaîtront ici, avec leurs images.":"Les administrateurs de l'alliance publieront bientôt leurs articles ici."}</p>
+    ${S.admin?'<button class="btn" id="first">Écrire un article</button>':""}</div>`;
+    const f=$("#first"); if(f) f.onclick=()=>openEditor(null); return;
+  }
+  const [lead,...rest]=list;
+  m.innerHTML=`<article class="lead" data-id="${esc(lead.id)}">${cover(lead)}<div style="min-width:0"><div class="mono"><span class="tag">${esc(lead.cat)}</span></div><h2>${esc(lead.title)}</h2><p>${esc(lead.deck||"")}</p><div class="meta mono">${esc(lead.author_name||"La rédaction")} · ${fmtDate(lead.created_at)}</div></div></article>
+  <section class="grid">${rest.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${esc(a.title)}</h3><p>${esc(a.deck||"")}</p></article>`).join("")}</section>`;
+  m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>{S.view="article";S.openId=el.dataset.id;location.hash=el.dataset.id;render();scrollTo(0,0)});
+}
+function renderArticle(m){
+  if(!S.loaded){m.innerHTML=`<div class="empty"><p class="mono">Chargement…</p></div>`;return}
+  const a=S.articles.find(x=>x.id===S.openId);
+  if(!a){S.view="list";return render()}
+  m.innerHTML=`<div class="article"><button class="back mono" id="back">← Retour à la une</button>
+  <div class="mono" style="margin-top:20px"><span class="tag">${esc(a.cat)}</span></div>
+  <h1>${esc(a.title)}</h1>${a.deck?`<p class="deck">${esc(a.deck)}</p>`:""}
+  <div class="byline mono"><span>${esc(a.author_name||"La rédaction")}</span><span>·</span><span>${fmtDate(a.created_at)}</span>${a.edited_at?`<span>· modifié le ${fmtDate(a.edited_at)}</span>`:""}</div>
+  ${a.cover&&!String(a.body||"").includes("[image:"+a.cover+"]")?`<figure style="margin:0 0 20px"><img src="${esc(imgUrl(a.cover))}" alt="" style="width:100%;border-radius:4px"></figure>`:""}
+  <div class="prose">${md(a.body)}</div>
+  ${S.admin?`<div class="actions" id="acts"><button class="btn ghost" id="edit">Modifier</button><button class="btn danger" id="del">Supprimer</button></div>`:""}</div>`;
+  $("#back").onclick=()=>{S.view="list";history.replaceState(null,"",location.pathname);render()};
+  if(S.admin){
+    $("#edit").onclick=()=>openEditor(a);
+    $("#del").onclick=()=>{
+      $("#acts").innerHTML=`<div class="confirm"><span>Supprimer définitivement « ${esc(a.title)} » ?</span><button class="btn danger" id="yes">Oui, supprimer</button><button class="btn ghost" id="no">Annuler</button></div>`;
+      $("#no").onclick=()=>renderArticle(m);
+      $("#yes").onclick=async()=>{
+        const {error}=await S.sb.from("articles").delete().eq("id",a.id);
+        if(error) return toast("Suppression impossible : "+error.message);
+        if(a.images&&a.images.length) await S.sb.storage.from("images").remove(a.images);
+        toast("Article supprimé"); S.view="list"; history.replaceState(null,"",location.pathname); loadArticles();
+      };
+    };
+  }
+}
+
+/* ---------- Connexion ---------- */
+function renderLogin(m){
+  if(S.session){S.view="list";return render()}
+  m.innerHTML=`<form class="login" id="lf"><h2>Connexion admin</h2><p class="hint" style="margin:0">Réservé aux administrateurs de l'alliance. Les lecteurs n'ont pas besoin de compte.</p>
+  <div class="field"><label class="mono" for="f-email">E-mail</label><input id="f-email" type="email" autocomplete="username" required></div>
+  <div class="field"><label class="mono" for="f-pass">Mot de passe</label><input id="f-pass" type="password" autocomplete="current-password" required></div>
+  <div class="err" id="lerr"></div>
+  <div class="row"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" id="lback">Annuler</button></div>
+  <p class="hint">Pas encore admin ? <a href="#rejoindre" id="tojoin" style="color:var(--accent)">Faire une demande</a></p></form>`;
+  $("#tojoin").onclick=e=>{e.preventDefault();S.view="rejoindre";location.hash="rejoindre";render()};
+  $("#lback").onclick=()=>{S.view="list";render()};
+  $("#lf").onsubmit=async e=>{
+    e.preventDefault(); $("#lerr").textContent="";
+    const {error}=await S.sb.auth.signInWithPassword({email:$("#f-email").value.trim(),password:$("#f-pass").value});
+    if(error) $("#lerr").textContent="Connexion refusée : vérifiez l'e-mail et le mot de passe.";
+    else {S.view="list";toast("Connecté")}
+  };
+}
+
+
+/* ---------- Comptes, demandes et équipe ---------- */
+async function loadMe(){
+  S.me=null;S.admin=false;S.chef=false;S.meLoaded=false;
+  if(!S.session){S.team=[];return}
+  const {data}=await S.sb.from("admins").select("*").eq("id",S.session.user.id).maybeSingle();
+  S.me=data||null; S.meLoaded=true;
+  S.admin=!!data&&(data.status==="admin"||data.status==="chef");
+  S.chef=!!data&&data.status==="chef";
+  if(S.chef) await loadTeam(); else S.team=[];
+}
+async function loadTeam(){
+  const {data}=await S.sb.from("admins").select("*").order("created_at",{ascending:true});
+  S.team=data||[];
+}
+async function savePseudo(v){
+  const {error}=await S.sb.from("admins").update({pseudo:v}).eq("id",S.session.user.id);
+  if(error) return toast("Erreur : "+error.message);
+  S.me={...S.me,pseudo:v}; toast("Pseudo enregistré"); render();
+}
+function renderJoin(m){
+  if(S.session){S.view="list";return render()}
+  m.innerHTML=`<form class="login" id="jf"><h2>Devenir admin</h2>
+  <p class="hint" style="margin:0">Remplissez ce formulaire : votre demande sera envoyée au chef de la Gazette. Vous pourrez publier dès qu'il l'aura acceptée.</p>
+  <div class="field"><label class="mono" for="j-pseudo">Pseudo (celui du jeu)</label><input id="j-pseudo" maxlength="40" required></div>
+  <div class="field"><label class="mono" for="j-email">E-mail</label><input id="j-email" type="email" autocomplete="username" required></div>
+  <div class="field"><label class="mono" for="j-pass">Mot de passe (8 caractères minimum)</label><input id="j-pass" type="password" minlength="8" autocomplete="new-password" required></div>
+  <div class="field"><label class="mono" for="j-pass2">Confirmer le mot de passe</label><input id="j-pass2" type="password" minlength="8" autocomplete="new-password" required></div>
+  <div class="err" id="jerr"></div>
+  <div class="row"><button class="btn" type="submit" id="jbtn">Envoyer ma demande</button><button class="btn ghost" type="button" id="jback">Annuler</button></div></form>`;
+  $("#jback").onclick=()=>{S.view="list";history.replaceState(null,"",location.pathname);render()};
+  $("#jf").onsubmit=async e=>{
+    e.preventDefault(); const err=$("#jerr"); err.textContent="";
+    const ps=$("#j-pseudo").value.trim(), em=$("#j-email").value.trim(), p1=$("#j-pass").value, p2=$("#j-pass2").value;
+    if(p1!==p2){err.textContent="Les deux mots de passe ne sont pas identiques.";return}
+    $("#jbtn").disabled=true;
+    const {data,error}=await S.sb.auth.signUp({email:em,password:p1,options:{data:{pseudo:ps}}});
+    $("#jbtn").disabled=false;
+    if(error){err.textContent=/registered|exists/i.test(error.message)?"Cette adresse a déjà un compte : utilisez « Connexion admin ».":/signups? not allowed|disabled/i.test(error.message)?"Les demandes sont fermées pour le moment. Contactez le chef de la Gazette.":"Demande impossible : "+error.message;return}
+    history.replaceState(null,"",location.pathname);
+    if(!data.session){m.innerHTML=`<div class="login"><h2>Presque fini</h2><p>Un e-mail de confirmation vous a été envoyé. Cliquez sur le lien qu'il contient, puis connectez-vous avec « Connexion admin ».</p></div>`;return}
+    toast("Demande envoyée"); S.view="list";
+  };
+}
+function renderCompte(m){
+  m.innerHTML=`<div class="login"><h2>Mon compte</h2>
+  <p class="hint" style="margin:0">${esc(S.session.user.email)} · ${S.chef?"Chef de la Gazette":S.admin?"Administrateur":"Demande en attente"}</p>
+  <form class="field" id="cp"><label class="mono" for="c-pseudo">Pseudo d'auteur</label><div class="send"><input id="c-pseudo" maxlength="40" value="${esc(pseudo())}" style="flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px"><button class="btn" type="submit">Enregistrer</button></div></form>
+  <form class="field" id="cw"><label class="mono" for="c-pass">Nouveau mot de passe (8 caractères minimum)</label><input id="c-pass" type="password" minlength="8" autocomplete="new-password" required><input id="c-pass2" type="password" minlength="8" autocomplete="new-password" placeholder="Confirmer" required><div class="err" id="cerr"></div><div><button class="btn" type="submit">Changer le mot de passe</button></div></form>
+  <div><button class="btn ghost" id="cback">← Retour à la une</button></div></div>`;
+  $("#cback").onclick=()=>{S.view="list";render()};
+  $("#cp").onsubmit=async e=>{e.preventDefault();const v=$("#c-pseudo").value.trim();if(v)await savePseudo(v)};
+  $("#cw").onsubmit=async e=>{
+    e.preventDefault();const a=$("#c-pass").value,b=$("#c-pass2").value;
+    if(a!==b){$("#cerr").textContent="Les deux mots de passe ne sont pas identiques.";return}
+    const {error}=await S.sb.auth.updateUser({password:a});
+    if(error) $("#cerr").textContent="Changement impossible : "+error.message; else {$("#cerr").textContent="";$("#c-pass").value="";$("#c-pass2").value="";toast("Mot de passe changé")}
+  };
+}
+function renderEquipe(m){
+  const link=location.origin+location.pathname+"#rejoindre";
+  const wait=S.team.filter(x=>x.status==="en_attente"), team=S.team.filter(x=>x.status==="admin"||x.status==="chef");
+  const row=(x,btns)=>`<div class="msg" style="grid-template-columns:1fr auto;align-items:center"><div style="min-width:0"><span class="who"></span> <span class="when"></span><div class="hint mail"></div></div><div class="row" style="gap:6px">${btns}</div></div>`;
+  m.innerHTML=`<div class="salon"><h2>Équipe de la Gazette</h2>
+  <div class="field"><span class="mono" style="color:var(--muted)">Lien à envoyer aux futurs admins</span>
+  <div class="send"><input id="e-link" readonly value="${esc(link)}" style="flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px"><button class="btn" id="e-copy">Copier</button></div>
+  <span class="hint">La personne remplit le formulaire, puis sa demande apparaît ici. Rien ne se passe sans votre accord.</span></div>
+  <h3 class="mono" style="margin:10px 0 0">Demandes en attente (${wait.length})</h3>
+  <div class="msgs" id="e-wait"></div>
+  <h3 class="mono" style="margin:10px 0 0">Administrateurs (${team.length})</h3>
+  <div class="msgs" id="e-team"></div></div>`;
+  $("#e-copy").onclick=async()=>{try{await navigator.clipboard.writeText(link);toast("Lien copié")}catch(e){$("#e-link").select();toast("Sélectionnez le lien et copiez-le")}};
+  const fill=(box,list,mkBtns,empty)=>{
+    box.innerHTML=list.length?"":`<p class="hint" style="margin:0">${empty}</p>`;
+    list.forEach(x=>{
+      const d=document.createElement("div"); d.innerHTML=row(x,mkBtns(x)); const r=d.firstElementChild;
+      r.querySelector(".who").textContent=x.pseudo||"(sans pseudo)";
+      r.querySelector(".when").textContent=x.status==="chef"?"· chef":"· "+fmtDate(x.created_at);
+      r.querySelector(".mail").textContent=x.email||"";
+      r.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>act(b.dataset.act,x,r));
+      box.appendChild(r);
+    });
+  };
+  fill($("#e-wait"),wait,()=>`<button class="btn" data-act="ok">Accepter</button><button class="btn danger" data-act="no">Refuser</button>`,"Aucune demande pour le moment.");
+  fill($("#e-team"),team,x=>x.status==="chef"?"":`<button class="btn danger" data-act="del">Retirer</button>`,"Aucun admin.");
+}
+async function act(kind,x,rowEl){
+  if(kind==="del"||kind==="no"){
+    const box=rowEl.querySelector(".row");
+    if(!box.dataset.confirm){box.dataset.confirm="1";box.innerHTML=`<span class="hint">${kind==="del"?"Retirer":"Refuser"} ?</span><button class="btn danger" data-c="y">Oui</button><button class="btn ghost" data-c="n">Non</button>`;
+      box.querySelector('[data-c="n"]').onclick=()=>render();
+      box.querySelector('[data-c="y"]').onclick=()=>act(kind+"!",x,rowEl);return}
+  }
+  const fn=kind==="ok"?"accepter_admin":"retirer_admin";
+  const {error}=await S.sb.rpc(fn,{uid:x.id});
+  if(error) return toast("Action impossible : "+error.message);
+  toast(kind==="ok"?"Admin accepté":kind==="no!"?"Demande refusée":"Admin retiré");
+  await loadTeam(); render();
+}
+
+/* ---------- Éditeur ---------- */
+function openEditor(a){
+  S.draft=a?{id:a.id,title:a.title,cat:a.cat,deck:a.deck||"",body:a.body||"",cover:a.cover||null,images:[...(a.images||[])],isNew:false,preview:false}
+           :{id:null,title:"",cat:"Annonce",deck:"",body:"",cover:null,images:[],isNew:true,preview:false};
+  S.view="editor"; render(); scrollTo(0,0);
+}
+function renderEditor(m){
+  const d=S.draft;
+  m.innerHTML=`<div class="editor">
+  <button class="back mono" id="cancel">← Annuler</button>
+  <h2>${d.isNew?"Nouvel article":"Modifier l'article"}</h2>
+  <div class="row"><div class="field"><label class="mono" for="f-title">Titre</label><input id="f-title" maxlength="140" value="${esc(d.title)}" placeholder="Ex. : Guide des événements du week-end"></div>
+  <div class="field" style="flex:0 1 200px"><label class="mono" for="f-cat">Rubrique</label><select id="f-cat">${CATS.map(c=>`<option ${c===d.cat?"selected":""}>${c}</option>`).join("")}</select></div></div>
+  <div class="field"><label class="mono" for="f-deck">Chapeau (résumé d'une phrase)</label><input id="f-deck" maxlength="240" value="${esc(d.deck)}" placeholder="Ce que le lecteur va apprendre"></div>
+  <div class="field"><label class="mono" for="f-body">Texte</label>
+    <div class="toolbar"><button type="button" data-ins="## ">Intertitre</button><button type="button" data-wrap="**">Gras</button><button type="button" data-wrap="*">Italique</button><button type="button" data-ins="- ">Liste</button><button type="button" data-ins="1. ">Étapes</button><button type="button" data-ins="> ">Encadré</button><button type="button" id="addimg">+ Images</button><button type="button" id="prev">${d.preview?"Éditer":"Aperçu"}</button></div>
+    <input type="file" id="f-files" accept="image/*" multiple hidden>
+    ${d.preview?`<div class="preview prose">${md(d.body)||"<p class='hint'>Rien à afficher.</p>"}</div>`:`<textarea id="f-body" placeholder="Écrivez votre tuto ici. Laissez une ligne vide entre les paragraphes.">${esc(d.body)}</textarea>`}
+    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>.</div>
+  </div>
+  <div class="field"><span class="mono" style="color:var(--muted)">Images de l'article — cliquez sur une image pour en faire la couverture</span><div class="thumbs" id="thumbs"></div></div>
+  <div class="row" style="align-items:center"><button class="btn" id="save">${d.isNew?"Publier":"Enregistrer"}</button><span class="hint" id="status"></span></div>
+  </div>`;
+  const body=$("#f-body");
+  const sync=()=>{d.title=$("#f-title").value;d.cat=$("#f-cat").value;d.deck=$("#f-deck").value;if(body)d.body=body.value};
+  ["f-title","f-cat","f-deck","f-body"].forEach(id=>{const el=document.getElementById(id);if(el)el.oninput=sync});
+  $("#cancel").onclick=()=>{S.view=d.isNew?"list":"article";render()};
+  $("#prev").onclick=()=>{sync();d.preview=!d.preview;renderEditor(m)};
+  m.querySelectorAll("[data-ins]").forEach(b=>b.onclick=()=>{if(!body)return;const s=body.selectionStart;const ls=body.value.lastIndexOf("\n",s-1)+1;body.setRangeText(b.dataset.ins,ls,ls,"end");body.focus();sync()});
+  m.querySelectorAll("[data-wrap]").forEach(b=>b.onclick=()=>{if(!body)return;const w=b.dataset.wrap,s=body.selectionStart,e=body.selectionEnd;body.setRangeText(w+(body.value.slice(s,e)||"texte")+w,s,e,"end");body.focus();sync()});
+  $("#addimg").onclick=()=>$("#f-files").click();
+  $("#f-files").onchange=async ev=>{
+    const files=[...ev.target.files]; ev.target.value=""; if(!files.length) return;
+    const st=$("#status");
+    for(const [i,f] of files.entries()){
+      st.textContent=`Envoi de l'image ${i+1}/${files.length}…`;
+      try{
+        const blob=await compress(f);
+        const path=Date.now()+"-"+Math.random().toString(36).slice(2,8)+".jpg";
+        const {error}=await S.sb.storage.from("images").upload(path,blob,{contentType:"image/jpeg"});
+        if(error) throw error;
+        d.images.push(path); if(!d.cover) d.cover=path;
+        const token=`\n[image:${path}]\n`; const ta=$("#f-body");
+        if(ta){ta.setRangeText(token,ta.selectionStart,ta.selectionEnd,"end");d.body=ta.value}else d.body+=token;
+      }catch(e){toast("Image non envoyée : "+(e.message||e))}
+    }
+    st.textContent=""; drawThumbs();
+  };
+  $("#save").onclick=save;
+  drawThumbs();
+}
+function drawThumbs(){
+  const d=S.draft,box=$("#thumbs"); if(!box) return;
+  box.innerHTML=d.images.length?"":`<span class="hint">Aucune image pour l'instant. Utilisez « + Images ».</span>`;
+  d.images.forEach(p=>{
+    const t=document.createElement("div"); t.className="t"+(d.cover===p?" cover":"");
+    t.innerHTML=`<img alt=""><button type="button">Retirer</button>`;
+    t.querySelector("img").src=imgUrl(p);
+    t.querySelector("img").onclick=()=>{d.cover=p;drawThumbs()};
+    t.querySelector("button").onclick=()=>{
+      d.images=d.images.filter(x=>x!==p); if(d.cover===p) d.cover=d.images[0]||null;
+      d.body=d.body.split("[image:"+p+"]").join("");
+      const ta=$("#f-body"); if(ta) ta.value=d.body; drawThumbs();
+    };
+    box.appendChild(t);
+  });
+}
+async function save(){
+  const d=S.draft; const ta=$("#f-body"); if(ta) d.body=ta.value;
+  d.title=$("#f-title").value.trim(); d.cat=$("#f-cat").value; d.deck=$("#f-deck").value.trim();
+  const st=$("#status");
+  if(!d.title){st.textContent="Donnez un titre à l'article.";$("#f-title").focus();return}
+  if(!d.body.trim()){st.textContent="L'article est vide : écrivez au moins un paragraphe.";return}
+  $("#save").disabled=true; st.textContent="Publication…";
+  const row={title:d.title,cat:d.cat,deck:d.deck,body:d.body,cover:d.cover||null,images:d.images};
+  let res;
+  if(d.isNew) res=await S.sb.from("articles").insert({...row,author_name:pseudo()||"Un administrateur"}).select().single();
+  else res=await S.sb.from("articles").update({...row,edited_at:new Date().toISOString()}).eq("id",d.id).select().single();
+  if(res.error){$("#save").disabled=false;st.textContent="Publication impossible : "+res.error.message;return}
+  toast(d.isNew?"Article publié":"Modifications enregistrées");
+  S.openId=res.data.id; S.view="article"; location.hash=res.data.id;
+  await loadArticles(); render(); scrollTo(0,0);
+}
+
+/* ---------- Salon des admins ---------- */
+async function loadSalon(){
+  const {data,error}=await S.sb.from("salon").select("*").order("created_at",{ascending:false}).limit(150);
+  if(!error){S.salon=data.reverse(); drawMsgs()}
+}
+function renderSalon(m){
+  m.innerHTML=`<div class="salon"><h2>Salon des admins</h2><p class="hint" style="margin:0">Visible uniquement par les administrateurs connectés.</p>
+  <div class="msgs" id="msgs"><p class="hint" style="margin:0">Chargement…</p></div>
+  <form class="send" id="sendf"><label for="f-msg" hidden>Message</label><textarea id="f-msg" placeholder="Écrire aux autres admins… (Entrée pour envoyer)"></textarea><button class="btn" type="submit">Envoyer</button></form></div>`;
+  loadSalon();
+  clearInterval(S.salonTimer);
+  S.salonTimer=setInterval(()=>{if(S.view==="salon"&&!document.hidden)loadSalon();else if(S.view!=="salon")clearInterval(S.salonTimer)},8000);
+  const ta=$("#f-msg");
+  ta.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("#sendf").requestSubmit()}};
+  $("#sendf").onsubmit=async e=>{
+    e.preventDefault(); const text=ta.value.trim(); if(!text) return; ta.value="";
+    const {error}=await S.sb.from("salon").insert({text:text.slice(0,4000),author_name:pseudo()||S.session.user.email});
+    if(error){ta.value=text;toast("Message non envoyé : "+error.message)} else loadSalon();
+  };
+}
+function drawMsgs(){
+  const box=$("#msgs"); if(!box) return;
+  if(!S.salon.length){box.innerHTML=`<p class="hint" style="margin:0">Aucun message. Lancez la discussion.</p>`;return}
+  const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
+  box.innerHTML="";
+  S.salon.forEach(x=>{
+    const r=document.createElement("div"); r.className="msg"; r.style.gridTemplateColumns="1fr";
+    r.innerHTML=`<div style="min-width:0"><span class="who"></span><span class="when"></span><div class="txt"></div></div>`;
+    r.querySelector(".who").textContent=x.author_name||"Admin";
+    r.querySelector(".when").textContent=fmtTime(x.created_at);
+    r.querySelector(".txt").textContent=x.text;
+    box.appendChild(r);
+  });
+  if(atBottom||!drawMsgs._done){box.scrollTop=box.scrollHeight;drawMsgs._done=true}
+}
+
+/* ---------- Démarrage ---------- */
+(async()=>{
+  if(!window.supabase||SUPABASE_URL.startsWith("COLLE")){
+    S.loaded=true; S.error="Le site n'est pas encore configuré : collez l'URL et la clé Supabase en haut du fichier index.html.";
+    render(); return;
+  }
+  S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const h=location.hash.slice(1); if(h==="rejoindre"){S.view="rejoindre"} else if(h){S.view="article";S.openId=h}
+  const {data}=await S.sb.auth.getSession();
+  S.session=data.session; await loadMe();
+  S.sb.auth.onAuthStateChange((ev,session)=>{
+    const changed=(session&&session.user.id)!==(S.session&&S.session.user.id);
+    S.session=session;
+    if(changed||ev==="SIGNED_OUT"){setTimeout(async()=>{await loadMe();if(S.view!=="editor")render()},0)}
+  });
+  render();
+  loadArticles();
+})();
+</script>
+</body>
+</html>
