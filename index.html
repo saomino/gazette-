@@ -148,6 +148,17 @@ img{max-width:100%}
 .comform input,.comform textarea{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px;width:100%}
 .comform textarea{min-height:80px;resize:vertical}
 .counts{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+.search{display:flex;gap:8px;align-items:center;padding-block:12px;border-bottom:1px solid var(--line)}
+.search input{flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:16px}
+.search button{background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:12px;padding:6px}
+.results{padding-top:20px;color:var(--muted)}
+mark{background:var(--soft);color:inherit;padding:0 2px;border-radius:2px}
+.tr{display:inline-flex;gap:6px;align-items:center;margin-top:6px;font-family:var(--mono);font-size:12px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--paper)}
+figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
+.lb .lbbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:12px 12px calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,rgba(5,8,12,.9))}
+.lb .lbbar a,.lb .lbbar button{font-family:var(--mono);font-size:13px;border-radius:999px;padding:9px 16px;border:0;text-decoration:none}
+.lb .lbbar a{background:#e2a93b;color:#17120a;font-weight:600}
+.lb .lbbar button{background:rgba(255,255,255,.14);color:#fff}
 .lb{position:fixed;inset:0;z-index:30;background:rgba(5,8,12,.94);display:grid;place-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px));overflow:auto}
 .lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
 .lb span{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:14px;color:#fff;font-family:var(--mono);font-size:13px;background:rgba(255,255,255,.12);padding:6px 10px;border-radius:6px}
@@ -164,9 +175,10 @@ img{max-width:100%}
     <div class="mono" style="color:var(--muted)">Le journal de l'alliance · annonces, tutos, événements</div>
   </header>
   <nav class="nav" id="nav"></nav>
+  <div class="search" id="searchBar"><label for="q" hidden>Rechercher</label><input id="q" type="search" placeholder="Rechercher un article (ex. : équipe, dragon…)" autocomplete="off" enterkeyhint="search"><button type="button" id="qclear" hidden>Effacer ✕</button></div>
   <div id="pseudoBox"></div>
   <main id="main"></main>
-  <footer class="foot mono"><span>La Gazette de LGS</span><span id="authLink"></span></footer>
+  <footer class="foot mono"><span>La Gazette de LGS · v9</span><span id="authLink"></span></footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -189,6 +201,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeou
 $("#today").textContent=new Date().toLocaleDateString("fr-BE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
 const pseudo=()=>(S.me&&S.me.pseudo)||"";
+const lensUrl=u=>"https://lens.google.com/uploadbyurl?url="+encodeURIComponent(u);
 const imgUrl=path=>/^https?:\/\//.test(path)?path:S.sb.storage.from("images").getPublicUrl(path).data.publicUrl;
 
 /* ---------- Images ---------- */
@@ -221,7 +234,7 @@ function md(src){
   for(const raw of lines){
     const l=raw.trim(); let m;
     if(!l){flushP();flushL();continue}
-    if((m=l.match(/^\[image:([^\]\s"'<>]+)\]$/))){flushP();flushL();html+=`<figure><img src="${esc(imgUrl(m[1]))}" alt="" loading="lazy"></figure>`;continue}
+    if((m=l.match(/^\[image:([^\]\s"'<>|]+)(?:\|([^\]]*))?\]$/))){flushP();flushL();const u=imgUrl(m[1]);html+=`<figure><img src="${esc(u)}" alt="${esc(m[2]||"")}" loading="lazy">${m[2]?`<figcaption>${inline(m[2])}</figcaption>`:""}<a class="tr" href="${esc(lensUrl(u))}" target="_blank" rel="noopener">🌐 Traduire l'image · Translate image</a></figure>`;continue}
     if(l.startsWith("### ")){flushP();flushL();html+="<h3>"+inline(l.slice(4))+"</h3>";continue}
     if(l.startsWith("## ")){flushP();flushL();html+="<h2>"+inline(l.slice(3))+"</h2>";continue}
     if(l.startsWith("> ")){flushP();flushL();html+="<blockquote>"+inline(l.slice(2))+"</blockquote>";continue}
@@ -325,6 +338,50 @@ async function loadComs(a){
   });
 }
 
+
+/* ---------- Recherche ---------- */
+S.q="";
+const norm=t=>String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const plain=t=>String(t||"").replace(/\[image:[^\]]*\]/g," ").replace(/[#*>`_-]/g," ");
+function snippet(a,words){
+  const txt=plain(a.body).replace(/\s+/g," ").trim(), n=norm(txt);
+  let i=-1; for(const w of words){const k=n.indexOf(w); if(k>=0&&(i<0||k<i)) i=k}
+  if(i<0) return a.deck||txt.slice(0,160);
+  const start=Math.max(0,i-60); return (start>0?"… ":"")+txt.slice(start,start+180)+(start+180<txt.length?" …":"");
+}
+function highlight(text,words){
+  let html=esc(text); const n=norm(text);
+  const ranges=[]; words.forEach(w=>{let k=n.indexOf(w);while(k>=0&&w){ranges.push([k,k+w.length]);k=n.indexOf(w,k+w.length)}});
+  if(!ranges.length) return html;
+  ranges.sort((x,y)=>x[0]-y[0]); let out="",pos=0;
+  ranges.forEach(([a,b])=>{if(a<pos)return; out+=esc(text.slice(pos,a))+"<mark>"+esc(text.slice(a,b))+"</mark>"; pos=b});
+  return out+esc(text.slice(pos));
+}
+function renderResults(m){
+  const words=norm(S.q).split(/\s+/).filter(Boolean);
+  const hits=S.articles.filter(a=>{
+    if(S.cat!=="Tout"&&a.cat!==S.cat) return false;
+    const hay=norm([a.title,a.deck,plain(a.body),a.author_name,a.cat].join(" "));
+    return words.every(w=>hay.includes(w));
+  });
+  m.innerHTML=`<p class="results mono">${hits.length} article${hits.length>1?"s":""} pour « ${esc(S.q.trim())} »${S.cat!=="Tout"?" dans "+esc(S.cat.toLowerCase())+"s":""}</p>`+
+    (hits.length?`<section class="grid">${hits.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${highlight(a.title,words)}</h3><p>${highlight(snippet(a,words),words)}</p>${countsLine(a)}</article>`).join("")}</section>`
+    :`<div class="empty"><p>Aucun article ne contient ce mot. Essayez un autre mot ou vérifiez l'orthographe.</p></div>`);
+  m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>go(el.dataset.id));
+}
+(function(){
+  const q=$("#q"), clear=$("#qclear");
+  let t=null;
+  q.addEventListener("input",()=>{
+    clearTimeout(t); t=setTimeout(()=>{
+      S.q=q.value; clear.hidden=!q.value;
+      if(S.view!=="list"){go("")} else renderList($("#main"));
+    },200);
+  });
+  q.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();q.blur()}});
+  clear.onclick=()=>{q.value="";S.q="";clear.hidden=true;if(S.view==="list")renderList($("#main"))};
+})();
+
 /* ---------- Rendu ---------- */
 function renderNav(){
   const n=$("#nav"); n.innerHTML="";
@@ -352,6 +409,7 @@ function renderNav(){
 }
 function render(){
   $("#issue").textContent="Édition n° "+(S.articles.length||"—");
+  $("#searchBar").hidden=!(S.view==="list"||S.view==="article");
   renderNav();
   const m=$("#main");
   if(S.view==="login") return renderLogin(m);
@@ -367,6 +425,7 @@ const cover=a=>a.cover?`<div class="img"><img src="${esc(imgUrl(a.cover))}" alt=
 function renderList(m){
   if(!S.loaded){m.innerHTML=`<div class="empty"><p class="mono">Chargement de la gazette…</p></div>`;return}
   if(S.error){m.innerHTML=`<div class="empty"><h2>Gazette indisponible</h2><p>${esc(S.error)}</p></div>`;return}
+  if(S.q&&S.q.trim()) return renderResults(m);
   const list=S.articles.filter(a=>S.cat==="Tout"||a.cat===S.cat);
   if(!list.length){
     m.innerHTML=`<div class="empty"><h2>${S.cat==="Tout"?"Rien sous presse pour l'instant":"Aucun article dans cette rubrique"}</h2>
@@ -544,7 +603,7 @@ function renderEditor(m){
     <div class="toolbar"><button type="button" data-ins="## ">Intertitre</button><button type="button" data-wrap="**">Gras</button><button type="button" data-wrap="*">Italique</button><button type="button" data-ins="- ">Liste</button><button type="button" data-ins="1. ">Étapes</button><button type="button" data-ins="> ">Encadré</button><button type="button" id="addimg">+ Images</button><button type="button" id="prev">${d.preview?"Éditer":"Aperçu"}</button></div>
     <input type="file" id="f-files" accept="image/*" multiple hidden>
     ${d.preview?`<div class="preview prose">${md(d.body)||"<p class='hint'>Rien à afficher.</p>"}</div>`:`<textarea id="f-body" placeholder="Écrivez votre tuto ici. Laissez une ligne vide entre les paragraphes.">${esc(d.body)}</textarea>`}
-    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>.</div>
+    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>. Légende sous une image : ajoutez <code>|votre légende</code> avant le <code>]</code>, par ex. <code>[image:…|Écran des alliances]</code>.</div>
   </div>
   <div class="field"><span class="mono" style="color:var(--muted)">Images de l'article — cliquez sur une image pour en faire la couverture</span><div class="thumbs" id="thumbs"></div></div>
   <div class="row" style="align-items:center"><button class="btn" id="save">${d.isNew?"Publier":"Enregistrer"}</button><span class="hint" id="status"></span></div>
@@ -666,13 +725,16 @@ window.addEventListener("hashchange",route);
 /* Image en grand */
 function openLb(src){
   closeLb(true);
-  const d=document.createElement("div"); d.className="lb"; d.innerHTML=`<span>Fermer ✕</span><img alt="">`; d.querySelector("img").src=src;
+  const d=document.createElement("div"); d.className="lb"; d.innerHTML=`<span>Fermer ✕</span><img alt=""><div class="lbbar"><a target="_blank" rel="noopener">🌐 Traduire · Translate</a><button type="button">Fermer · Close</button></div>`; d.querySelector("img").src=src;
+  d.querySelector("a").href=lensUrl(src);
+  d.querySelector(".lbbar").onclick=e=>{ if(e.target.tagName!=="BUTTON") e.stopPropagation(); };
   d.onclick=()=>history.back();
   document.body.appendChild(d); S.lb=d; history.pushState({lb:1},"");
 }
 function closeLb(silent){ if(S.lb){S.lb.remove();S.lb=null} }
 window.addEventListener("popstate",()=>{ if(S.lb) closeLb(); });
 document.addEventListener("click",e=>{
+  if(e.target.closest(".lb")) return;
   const img=e.target.closest(".article img"); if(img&&img.src) {e.preventDefault();openLb(img.src)}
 });
 
