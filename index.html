@@ -46,15 +46,19 @@ button{cursor:pointer}
 
 /* Lead + grid */
 .lead{display:grid;grid-template-columns:1.35fr 1fr;gap:28px;padding-block:28px;border-bottom:1px solid var(--line);cursor:pointer}
-.lead .img{aspect-ratio:16/10;max-width:100%;background:var(--soft);border-radius:4px;overflow:hidden}
-.lead .img img,.card .img img{width:100%;height:100%;object-fit:cover;display:block}
+.lead .img{max-width:100%;background:var(--soft);border-radius:4px;overflow:hidden;max-height:520px}
+.lead .img img,.card .img img{width:100%;height:auto;max-height:inherit;object-fit:cover;object-position:top;display:block}
+.img.ph{aspect-ratio:3/2}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+.badge.new{background:var(--accent);color:var(--accent-ink)}
+.badge.pin{border:1px solid var(--accent);color:var(--accent)}
 .lead h2{font-family:var(--display);font-weight:700;font-size:clamp(32px,4.5vw,52px);line-height:.98;margin:8px 0 12px;text-transform:uppercase;text-wrap:balance}
 .lead p{margin:0;color:var(--muted)}
 .tag{color:var(--accent);font-weight:600}
 .meta{color:var(--muted);margin-top:14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:28px 24px;padding-block:28px}
 .card{cursor:pointer;display:grid;gap:8px;align-content:start;min-width:0}
-.card .img{aspect-ratio:3/2;background:var(--soft);border-radius:4px;overflow:hidden}
+.card .img{background:var(--soft);border-radius:4px;overflow:hidden;max-height:340px}
 .card h3{font-family:var(--display);font-weight:700;font-size:28px;line-height:1;margin:0;text-transform:uppercase;text-wrap:balance}
 .card p{margin:0;color:var(--muted);font-size:15px}
 .card:hover h3,.lead:hover h2{color:var(--accent)}
@@ -163,6 +167,7 @@ mark{background:var(--soft);color:inherit;padding:0 2px;border-radius:2px}
 .ocrst{color:#c9d1dc;font-size:12px;text-transform:none;letter-spacing:0;min-height:1em}
 .ocrfound{display:grid;gap:8px}
 .ocrg{white-space:pre-wrap;background:rgba(255,255,255,.08);color:#fff;border-radius:6px;padding:10px 12px;font-size:15px}
+.lenshint{color:var(--muted);font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;line-height:1.5;margin:-6px 0 18px}
 .tw{display:grid;gap:4px;width:110px}
 .tw .t{width:110px;height:80px}
 .tw .ocr{border:1px solid var(--line);background:var(--paper);border-radius:6px;font-family:var(--mono);font-size:11px;padding:5px 4px;color:var(--accent)}
@@ -192,7 +197,7 @@ figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
   <div class="search" id="searchBar"><label for="q" hidden>Rechercher</label><input id="q" type="search" placeholder="Rechercher un article (ex. : équipe, dragon…)" autocomplete="off" enterkeyhint="search"><button type="button" id="qclear" hidden>Effacer ✕</button></div>
   <div id="pseudoBox"></div>
   <main id="main"></main>
-  <footer class="foot mono"><span>La Gazette de LGS · v13</span><span id="authLink"></span></footer>
+  <footer class="foot mono"><span>La Gazette de LGS · v15</span><span id="authLink"></span></footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -376,13 +381,13 @@ function highlight(text,words){
 }
 function renderResults(m){
   const words=norm(S.q).split(/\s+/).filter(Boolean);
-  const hits=S.articles.filter(a=>{
+  const hits=sortArts(S.articles).filter(a=>{
     if(S.cat!=="Tout"&&a.cat!==S.cat) return false;
     const hay=norm([a.title,a.deck,plain(a.body),a.author_name,a.cat].join(" "));
     return words.every(w=>hay.includes(w));
   });
   m.innerHTML=`<p class="results mono">${hits.length} article${hits.length>1?"s":""} pour « ${esc(S.q.trim())} »${S.cat!=="Tout"?" dans "+esc(S.cat.toLowerCase())+"s":""}</p>`+
-    (hits.length?`<section class="grid">${hits.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${highlight(a.title,words)}</h3><p>${highlight(snippet(a,words),words)}</p>${countsLine(a)}</article>`).join("")}</section>`
+    (hits.length?`<section class="grid">${hits.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono">${tags(a)} · ${fmtDate(a.created_at)}</div><h3>${highlight(a.title,words)}</h3><p>${highlight(snippet(a,words),words)}</p>${countsLine(a)}</article>`).join("")}</section>`
     :`<div class="empty"><p>Aucun article ne contient ce mot. Essayez un autre mot ou vérifiez l'orthographe.</p></div>`);
   m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>go(el.dataset.id));
 }
@@ -438,12 +443,15 @@ function render(){
   if(S.view==="salon"&&S.admin) return renderSalon(m);
   S.view="list"; renderList(m);
 }
-const cover=a=>a.cover?`<div class="img"><img src="${esc(imgUrl(a.cover))}" alt="" loading="lazy"></div>`:`<div class="img"><div class="noimg">LGS</div></div>`;
+const isNew=a=>Date.now()-Date.parse(a.created_at)<3*864e5;
+const tags=a=>`<span class="tag">${esc(a.cat)}</span>${a.pinned?'<span class="badge pin">📌 Épinglé</span>':""}${isNew(a)?'<span class="badge new">Nouveau</span>':""}`;
+const sortArts=l=>[...l].sort((x,y)=>(y.pinned?1:0)-(x.pinned?1:0)||Date.parse(y.created_at)-Date.parse(x.created_at));
+const cover=a=>a.cover?`<div class="img"><img src="${esc(imgUrl(a.cover))}" alt="" loading="lazy"></div>`:`<div class="img ph"><div class="noimg">LGS</div></div>`;
 function renderList(m){
   if(!S.loaded){m.innerHTML=`<div class="empty"><p class="mono">Chargement de la gazette…</p></div>`;return}
   if(S.error){m.innerHTML=`<div class="empty"><h2>Gazette indisponible</h2><p>${esc(S.error)}</p></div>`;return}
   if(S.q&&S.q.trim()) return renderResults(m);
-  const list=S.articles.filter(a=>S.cat==="Tout"||a.cat===S.cat);
+  const list=sortArts(S.articles.filter(a=>S.cat==="Tout"||a.cat===S.cat));
   if(!list.length){
     m.innerHTML=`<div class="empty"><h2>${S.cat==="Tout"?"Rien sous presse pour l'instant":"Aucun article dans cette rubrique"}</h2>
     <p>${S.admin?"Les articles que vous publiez apparaîtront ici, avec leurs images.":"Les administrateurs de l'alliance publieront bientôt leurs articles ici."}</p>
@@ -451,8 +459,8 @@ function renderList(m){
     const f=$("#first"); if(f) f.onclick=()=>openEditor(null); return;
   }
   const [lead,...rest]=list;
-  m.innerHTML=`<article class="lead" data-id="${esc(lead.id)}">${cover(lead)}<div style="min-width:0"><div class="mono"><span class="tag">${esc(lead.cat)}</span></div><h2>${esc(lead.title)}</h2><p>${esc(lead.deck||"")}</p><div class="meta mono">${esc(lead.author_name||"La rédaction")} · ${fmtDate(lead.created_at)}</div>${countsLine(lead)}</div></article>
-  <section class="grid">${rest.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${esc(a.title)}</h3><p>${esc(a.deck||"")}</p>${countsLine(a)}</article>`).join("")}</section>`;
+  m.innerHTML=`<article class="lead" data-id="${esc(lead.id)}">${cover(lead)}<div style="min-width:0"><div class="mono">${tags(lead)}</div><h2>${esc(lead.title)}</h2><p>${esc(lead.deck||"")}</p><div class="meta mono">${esc(lead.author_name||"La rédaction")} · ${fmtDate(lead.created_at)}</div>${countsLine(lead)}</div></article>
+  <section class="grid">${rest.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono">${tags(a)} · ${fmtDate(a.created_at)}</div><h3>${esc(a.title)}</h3><p>${esc(a.deck||"")}</p>${countsLine(a)}</article>`).join("")}</section>`;
   m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>go(el.dataset.id));
 }
 function renderArticle(m){
@@ -460,17 +468,25 @@ function renderArticle(m){
   const a=S.articles.find(x=>x.id===S.openId);
   if(!a){S.view="list";return render()}
   m.innerHTML=`<div class="article"><button class="back mono" id="back">← Retour à la une</button>
-  <div class="mono" style="margin-top:20px"><span class="tag">${esc(a.cat)}</span></div>
+  <div class="mono" style="margin-top:20px">${tags(a)}</div>
   <h1>${esc(a.title)}</h1>${a.deck?`<p class="deck">${esc(a.deck)}</p>`:""}
   <div class="byline mono"><span>${esc(a.author_name||"La rédaction")}</span><span>·</span><span>${fmtDate(a.created_at)}</span>${a.edited_at?`<span>· modifié le ${fmtDate(a.edited_at)}</span>`:""}</div>
   ${a.cover&&!String(a.body||"").includes("[image:"+a.cover+"]")?`<figure style="margin:0 0 20px"><img src="${esc(imgUrl(a.cover))}" alt="" style="width:100%;border-radius:4px"></figure>`:""}
   <div class="prose">${md(a.body)}</div>
   <section class="social" id="social"></section>
-  ${S.admin?`<div class="actions" id="acts"><button class="btn ghost" id="edit">Modifier l'article</button><button class="btn danger" id="del">Supprimer l'article</button></div>`:""}</div>`;
+  ${S.admin?`<div class="actions" id="acts"><button class="btn ghost" id="pin">${a.pinned?"Désépingler":"📌 Épingler en haut"}</button><button class="btn ghost" id="edit">Modifier l'article</button><button class="btn danger" id="del">Supprimer l'article</button></div>`:""}</div>`;
   $("#back").onclick=goBack;
   if(S.sb) renderSocial(a);
+  const fig=m.querySelector(".article figure");
+  if(fig){const h=document.createElement("p");h.className="lenshint";h.textContent="🌐 Appui long sur une image → Google Lens → Traduire · Long-press an image → Google Lens → Translate";fig.after(h)}
   if(S.admin){
     $("#edit").onclick=()=>openEditor(a);
+    $("#pin").onclick=async()=>{
+      const v=!a.pinned; $("#pin").disabled=true;
+      const {error}=await S.sb.from("articles").update({pinned:v}).eq("id",a.id);
+      if(error){$("#pin").disabled=false;return toast(/pinned/.test(error.message)?"Lancez d'abord le petit code SQL « épingler » dans Supabase.":"Impossible : "+error.message)}
+      a.pinned=v; toast(v?"Article épinglé en haut de la Gazette":"Article désépinglé"); renderArticle($("#main"));
+    };
     $("#del").onclick=()=>{
       $("#acts").innerHTML=`<div class="confirm"><span>Supprimer définitivement « ${esc(a.title)} » ?</span><button class="btn danger" id="yes">Oui, supprimer</button><button class="btn ghost" id="no">Annuler</button></div>`;
       $("#no").onclick=()=>renderArticle(m);
@@ -603,97 +619,6 @@ async function act(kind,x,rowEl){
 }
 
 
-/* ---------- Lecture du texte des images (OCR) ---------- */
-function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("module de lecture indisponible"));document.head.appendChild(s)})}
-const escRe=t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-async function ocrWorker(onProgress){
-  if(!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-  if(!S.ocrW) S.ocrW=await Tesseract.createWorker(["fra","eng"],1,{logger:m=>{S.ocrLog&&S.ocrLog(m)}});
-  S.ocrLog=onProgress; return S.ocrW;
-}
-function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin="anonymous";im.onload=()=>res(im);im.onerror=()=>rej(new Error("image illisible"));im.src=src})}
-/* Prépare une zone : agrandie, noir et blanc, contrastée, texte clair inversé */
-function prepZone(im,r){
-  const scale=Math.max(1,Math.min(3,1400/Math.max(r.w,r.h)));
-  const c=document.createElement("canvas"); c.width=Math.round(r.w*scale); c.height=Math.round(r.h*scale);
-  const x=c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high";
-  x.drawImage(im,r.x,r.y,r.w,r.h,0,0,c.width,c.height);
-  const d=x.getImageData(0,0,c.width,c.height),p=d.data; let sum=0,min=255,max=0;
-  for(let i=0;i<p.length;i+=4){const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];p[i]=g;sum+=g;if(g<min)min=g;if(g>max)max=g}
-  const mean=sum/(p.length/4), inv=mean<128, span=Math.max(1,max-min);
-  for(let i=0;i<p.length;i+=4){let g=(p[i]-min)*255/span;if(inv)g=255-g;p[i]=p[i+1]=p[i+2]=g}
-  x.putImageData(d,0,0); return c;
-}
-async function readZone(im,r,st){
-  const w=await ocrWorker(m=>{if(m.status==="recognizing text")st.textContent="Lecture… "+Math.round(m.progress*100)+" %";else st.textContent="Préparation de la lecture (la 1re fois peut prendre 30 s)…"});
-  const {data}=await w.recognize(prepZone(im,r),{},{text:true,blocks:true});
-  const ok=t=>{const letters=(t.match(/[A-Za-zÀ-ÿ]/g)||[]).length, all=t.replace(/\s/g,"").length; return letters>=3&&letters/Math.max(1,all)>=0.6};
-  const groups=[];
-  if(data.blocks&&data.blocks.length){
-    data.blocks.forEach(b=>(b.paragraphs||[]).forEach(pg=>{
-      const lines=(pg.lines||[]).filter(l=>l.confidence>=55).map(l=>l.text.replace(/\s+/g," ").trim()).filter(ok);
-      if(lines.length) groups.push(lines);
-    }));
-  } else {
-    String(data.text||"").split(/\n\s*\n/).forEach(g=>{const lines=g.split("\n").map(x=>x.replace(/\s+/g," ").trim()).filter(ok);if(lines.length)groups.push(lines)});
-  }
-  return groups;
-}
-async function extractText(path){
-  const d=S.draft; if(d.preview){toast("Repassez en mode « Éditer » d'abord");return}
-  const ta=$("#f-body"); if(ta) d.body=ta.value;
-  const src=(S.blobs&&S.blobs[path])?URL.createObjectURL(S.blobs[path]):imgUrl(path);
-  let im; try{im=await loadImg(src)}catch(e){toast("Impossible d'ouvrir cette image");return}
-  const found=[];
-  const ov=document.createElement("div"); ov.className="ocrm";
-  ov.innerHTML=`<div class="ocrbox"><p class="mono" style="margin:0;color:#fff">Dessinez un cadre avec le doigt autour du texte à lire. Vous pouvez lire plusieurs zones, dans l'ordre voulu.</p>
-  <div class="ocrstage"><img alt=""><div class="sel" hidden></div></div>
-  <div class="ocract"><button class="btn" id="oz" disabled>Lire cette zone</button><button class="btn ghost" id="oall">Lire toute l'image</button></div>
-  <div class="ocrst mono" id="ost"></div>
-  <div class="ocrfound" id="ofound"></div>
-  <div class="ocract"><button class="btn" id="oadd" disabled>Ajouter à l'article</button><button class="btn ghost" id="ocancel">Annuler</button></div></div>`;
-  document.body.appendChild(ov);
-  const img=ov.querySelector("img"), stage=ov.querySelector(".ocrstage"), sel=ov.querySelector(".sel"), st=ov.querySelector("#ost");
-  img.src=src;
-  let start=null, rect=null;
-  img.draggable=false;
-  const okRect=()=>!!(rect&&rect.w>10&&rect.h>10);
-  const pos=pt=>{const b=img.getBoundingClientRect();return{x:Math.min(Math.max(pt.clientX-b.left,0),b.width),y:Math.min(Math.max(pt.clientY-b.top,0),b.height),b}};
-  const begin=pt=>{start=pos(pt);rect=null;sel.hidden=false;Object.assign(sel.style,{left:(start.x+img.offsetLeft)+"px",top:(start.y+img.offsetTop)+"px",width:"0px",height:"0px"})};
-  const move=pt=>{if(!start)return;const p=pos(pt);const x=Math.min(p.x,start.x),y=Math.min(p.y,start.y),w=Math.abs(p.x-start.x),h=Math.abs(p.y-start.y);
-    Object.assign(sel.style,{left:(x+img.offsetLeft)+"px",top:(y+img.offsetTop)+"px",width:w+"px",height:h+"px"});
-    const k=im.naturalWidth/p.b.width; rect={x:Math.round(x*k),y:Math.round(y*k),w:Math.round(w*k),h:Math.round(h*k)}};
-  const end=()=>{if(!start)return;start=null;ov.querySelector("#oz").disabled=!okRect();st.textContent=okRect()?"Cadre prêt : appuyez sur « Lire cette zone ».":"Cadre trop petit : faites glisser le doigt en diagonale sur le texte."};
-  /* Doigt (écran tactile) */
-  stage.addEventListener("touchstart",e=>{if(e.touches.length!==1)return;e.preventDefault();begin(e.touches[0])},{passive:false});
-  stage.addEventListener("touchmove",e=>{if(!start)return;e.preventDefault();move(e.touches[0])},{passive:false});
-  stage.addEventListener("touchend",e=>{e.preventDefault();end()},{passive:false});
-  stage.addEventListener("touchcancel",()=>end());
-  /* Souris (ordinateur) */
-  stage.addEventListener("mousedown",e=>{e.preventDefault();begin(e)});
-  window.addEventListener("mousemove",e=>{if(start)move(e)});
-  window.addEventListener("mouseup",()=>end());
-  const drawFound=()=>{const f=ov.querySelector("#ofound");f.innerHTML="";found.forEach((g,i)=>{const b=document.createElement("div");b.className="ocrg";b.textContent=g.join("\n");f.appendChild(b)});ov.querySelector("#oadd").disabled=!found.length};
-  const run=async r=>{
-    ov.querySelectorAll("button").forEach(b=>b.disabled=true);
-    try{const g=await readZone(im,r,st);if(!g.length)st.textContent="Rien de lisible dans cette zone. Essayez un cadre plus serré autour du texte.";else{g.forEach(x=>found.push(x));st.textContent="Zone lue. Vous pouvez en lire une autre ou ajouter le texte à l'article.";drawFound()}}
-    catch(e){st.textContent="Lecture impossible : "+(e.message||e)}
-    ov.querySelectorAll("button").forEach(b=>b.disabled=false); ov.querySelector("#oz").disabled=!okRect(); ov.querySelector("#oadd").disabled=!found.length;
-  };
-  ov.querySelector("#oz").onclick=()=>{if(rect)run(rect)};
-  ov.querySelector("#oall").onclick=()=>run({x:0,y:0,w:im.naturalWidth,h:im.naturalHeight});
-  const close=()=>{ov.remove();if(src.startsWith("blob:"))URL.revokeObjectURL(src)};
-  ov.querySelector("#ocancel").onclick=close;
-  ov.querySelector("#oadd").onclick=()=>{
-    const block="\n\n> **Texte de l'image :**\n"+found.map(g=>g.map(x=>"> "+x).join("\n")).join("\n>\n")+"\n";
-    const ta=$("#f-body"); if(ta) d.body=ta.value;
-    const re=new RegExp("\\[image:"+escRe(path)+"[^\\]]*\\]"); const m=re.exec(d.body);
-    d.body=m?d.body.slice(0,m.index+m[0].length)+block+d.body.slice(m.index+m[0].length):d.body+block;
-    if(ta) ta.value=d.body;
-    close(); toast("Texte ajouté sous l'image : relisez-le avant de publier");
-  };
-}
-
 /* ---------- Éditeur ---------- */
 function openEditor(a){
   S.draft=a?{id:a.id,title:a.title,cat:a.cat,deck:a.deck||"",body:a.body||"",cover:a.cover||null,images:[...(a.images||[])],isNew:false,preview:false}
@@ -712,7 +637,7 @@ function renderEditor(m){
     <div class="toolbar"><button type="button" data-ins="## ">Intertitre</button><button type="button" data-wrap="**">Gras</button><button type="button" data-wrap="*">Italique</button><button type="button" data-ins="- ">Liste</button><button type="button" data-ins="1. ">Étapes</button><button type="button" data-ins="> ">Encadré</button><button type="button" id="addimg">+ Images</button><button type="button" id="prev">${d.preview?"Éditer":"Aperçu"}</button></div>
     <input type="file" id="f-files" accept="image/*" multiple hidden>
     ${d.preview?`<div class="preview prose">${md(d.body)||"<p class='hint'>Rien à afficher.</p>"}</div>`:`<textarea id="f-body" placeholder="Écrivez votre tuto ici. Laissez une ligne vide entre les paragraphes.">${esc(d.body)}</textarea>`}
-    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>. Sous chaque image, « Extraire le texte » recopie le texte de la capture dans l'article (relisez-le : la lecture automatique fait des erreurs). Légende sous une image : ajoutez <code>|votre légende</code> avant le <code>]</code>, par ex. <code>[image:…|Écran des alliances]</code>.</div>
+    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>. Légende sous une image : ajoutez <code>|votre légende</code> avant le <code>]</code>, par ex. <code>[image:…|Écran des alliances]</code>.</div>
   </div>
   <div class="field"><span class="mono" style="color:var(--muted)">Images de l'article — cliquez sur une image pour en faire la couverture</span><div class="thumbs" id="thumbs"></div></div>
   <div class="row" style="align-items:center"><button class="btn" id="save">${d.isNew?"Publier":"Enregistrer"}</button><span class="hint" id="status"></span></div>
@@ -752,9 +677,7 @@ function drawThumbs(){
     const w=document.createElement("div"); w.className="tw";
     const t=document.createElement("div"); t.className="t"+(d.cover===p?" cover":"");
     t.innerHTML=`<img alt=""><button type="button">Retirer</button>`;
-    const ob=document.createElement("button"); ob.type="button"; ob.className="ocr"; ob.textContent="Extraire le texte";
-    ob.onclick=()=>extractText(p);
-    w.appendChild(t); w.appendChild(ob);
+    w.appendChild(t);
     t.querySelector("img").src=imgUrl(p);
     t.querySelector("img").onclick=()=>{d.cover=p;drawThumbs()};
     t.querySelector("button").onclick=()=>{
