@@ -153,6 +153,10 @@ img{max-width:100%}
 .search button{background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:12px;padding:6px}
 .results{padding-top:20px;color:var(--muted)}
 mark{background:var(--soft);color:inherit;padding:0 2px;border-radius:2px}
+.tw{display:grid;gap:4px;width:110px}
+.tw .t{width:110px;height:80px}
+.tw .ocr{border:1px solid var(--line);background:var(--paper);border-radius:6px;font-family:var(--mono);font-size:11px;padding:5px 4px;color:var(--accent)}
+.prose blockquote strong:first-child{display:block;margin-bottom:4px}
 .tr{display:inline-flex;gap:6px;align-items:center;margin-top:6px;font-family:var(--mono);font-size:12px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--paper)}
 figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
 .lb .lbbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:12px 12px calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,rgba(5,8,12,.9))}
@@ -178,7 +182,7 @@ figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
   <div class="search" id="searchBar"><label for="q" hidden>Rechercher</label><input id="q" type="search" placeholder="Rechercher un article (ex. : équipe, dragon…)" autocomplete="off" enterkeyhint="search"><button type="button" id="qclear" hidden>Effacer ✕</button></div>
   <div id="pseudoBox"></div>
   <main id="main"></main>
-  <footer class="foot mono"><span>La Gazette de LGS · v9</span><span id="authLink"></span></footer>
+  <footer class="foot mono"><span>La Gazette de LGS · v11</span><span id="authLink"></span></footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -229,20 +233,23 @@ function inline(s){
 }
 function md(src){
   const lines=String(src||"").replace(/\r/g,"").split("\n"); let html="",para=[],list=null;
+  let quote=[];
+  const flushQ=()=>{if(quote.length){html+="<blockquote>"+quote.map(inline).join("<br>")+"</blockquote>";quote=[]}};
   const flushP=()=>{if(para.length){html+="<p>"+inline(para.join(" "))+"</p>";para=[]}};
   const flushL=()=>{if(list){html+=`<${list.t}>`+list.items.map(i=>"<li>"+inline(i)+"</li>").join("")+`</${list.t}>`;list=null}};
   for(const raw of lines){
     const l=raw.trim(); let m;
+    if(quote.length&&!(l.startsWith("> ")||l===">")) flushQ();
     if(!l){flushP();flushL();continue}
-    if((m=l.match(/^\[image:([^\]\s"'<>|]+)(?:\|([^\]]*))?\]$/))){flushP();flushL();const u=imgUrl(m[1]);html+=`<figure><img src="${esc(u)}" alt="${esc(m[2]||"")}" loading="lazy">${m[2]?`<figcaption>${inline(m[2])}</figcaption>`:""}<a class="tr" href="${esc(lensUrl(u))}" target="_blank" rel="noopener">🌐 Traduire l'image · Translate image</a></figure>`;continue}
+    if((m=l.match(/^\[image:([^\]\s"'<>|]+)(?:\|([^\]]*))?\]$/))){flushP();flushL();const u=imgUrl(m[1]);html+=`<figure><img src="${esc(u)}" alt="${esc(m[2]||"")}" loading="lazy">${m[2]?`<figcaption>${inline(m[2])}</figcaption>`:""}</figure>`;continue}
     if(l.startsWith("### ")){flushP();flushL();html+="<h3>"+inline(l.slice(4))+"</h3>";continue}
     if(l.startsWith("## ")){flushP();flushL();html+="<h2>"+inline(l.slice(3))+"</h2>";continue}
-    if(l.startsWith("> ")){flushP();flushL();html+="<blockquote>"+inline(l.slice(2))+"</blockquote>";continue}
+    if(l.startsWith("> ")||l===">"){flushP();flushL();quote.push(l.slice(2));continue}
     if((m=l.match(/^[-*] (.*)$/))){flushP();if(!list||list.t!=="ul"){flushL();list={t:"ul",items:[]}}list.items.push(m[1]);continue}
     if((m=l.match(/^\d+[.)] (.*)$/))){flushP();if(!list||list.t!=="ol"){flushL();list={t:"ol",items:[]}}list.items.push(m[1]);continue}
     flushL(); para.push(l);
   }
-  flushP();flushL(); return html;
+  flushP();flushL();flushQ(); return html;
 }
 
 /* ---------- Données ---------- */
@@ -585,6 +592,34 @@ async function act(kind,x,rowEl){
   await loadTeam(); render();
 }
 
+
+/* ---------- Lecture du texte des images (OCR) ---------- */
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("module de lecture indisponible"));document.head.appendChild(s)})}
+const escRe=t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+async function extractText(path,btn){
+  const d=S.draft; const st=$("#status"); const ta=$("#f-body");
+  if(d.preview){toast("Repassez en mode « Éditer » d'abord");return}
+  btn.disabled=true; const label=btn.textContent; btn.textContent="Lecture…";
+  try{
+    if(!window.Tesseract){st.textContent="Chargement du module de lecture (une seule fois)…";await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js")}
+    const worker=await Tesseract.createWorker(["fra","eng"],1,{logger:m=>{if(m.status==="recognizing text")st.textContent="Lecture du texte de l'image… "+Math.round(m.progress*100)+" %";else st.textContent="Préparation de la lecture…"}});
+    const src=(S.blobs&&S.blobs[path])||imgUrl(path);
+    const {data}=await worker.recognize(src);
+    await worker.terminate();
+    const ok=x=>(x.match(/[A-Za-zÀ-ÿ0-9]/g)||[]).length>=2;
+    const groups=String(data.text||"").split(/\n\s*\n/).map(g=>g.split("\n").map(x=>x.replace(/\s+/g," ").trim()).filter(ok)).filter(g=>g.length);
+    if(!groups.length){st.textContent="";toast("Aucun texte lisible trouvé dans cette image");return}
+    const block="\n\n> **Texte de l'image :**\n"+groups.map(g=>g.map(x=>"> "+x).join("\n")).join("\n>\n")+"\n";
+    if(ta) d.body=ta.value;
+    const re=new RegExp("\\[image:"+escRe(path)+"[^\\]]*\\]"); const m=re.exec(d.body);
+    d.body=m?d.body.slice(0,m.index+m[0].length)+block+d.body.slice(m.index+m[0].length):d.body+block;
+    if(ta) ta.value=d.body;
+    st.textContent="Texte ajouté sous l'image : relisez-le et corrigez-le si besoin.";
+    toast("Texte extrait");
+  }catch(e){st.textContent="";toast("Lecture impossible : "+(e.message||e))}
+  finally{btn.disabled=false;btn.textContent=label}
+}
+
 /* ---------- Éditeur ---------- */
 function openEditor(a){
   S.draft=a?{id:a.id,title:a.title,cat:a.cat,deck:a.deck||"",body:a.body||"",cover:a.cover||null,images:[...(a.images||[])],isNew:false,preview:false}
@@ -603,7 +638,7 @@ function renderEditor(m){
     <div class="toolbar"><button type="button" data-ins="## ">Intertitre</button><button type="button" data-wrap="**">Gras</button><button type="button" data-wrap="*">Italique</button><button type="button" data-ins="- ">Liste</button><button type="button" data-ins="1. ">Étapes</button><button type="button" data-ins="> ">Encadré</button><button type="button" id="addimg">+ Images</button><button type="button" id="prev">${d.preview?"Éditer":"Aperçu"}</button></div>
     <input type="file" id="f-files" accept="image/*" multiple hidden>
     ${d.preview?`<div class="preview prose">${md(d.body)||"<p class='hint'>Rien à afficher.</p>"}</div>`:`<textarea id="f-body" placeholder="Écrivez votre tuto ici. Laissez une ligne vide entre les paragraphes.">${esc(d.body)}</textarea>`}
-    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>. Légende sous une image : ajoutez <code>|votre légende</code> avant le <code>]</code>, par ex. <code>[image:…|Écran des alliances]</code>.</div>
+    <div class="hint">Les images s'insèrent là où se trouve le curseur. Formats : <code>## Intertitre</code>, <code>**gras**</code>, <code>- liste</code>, <code>1. étape</code>. Sous chaque image, « Extraire le texte » recopie le texte de la capture dans l'article (relisez-le : la lecture automatique fait des erreurs). Légende sous une image : ajoutez <code>|votre légende</code> avant le <code>]</code>, par ex. <code>[image:…|Écran des alliances]</code>.</div>
   </div>
   <div class="field"><span class="mono" style="color:var(--muted)">Images de l'article — cliquez sur une image pour en faire la couverture</span><div class="thumbs" id="thumbs"></div></div>
   <div class="row" style="align-items:center"><button class="btn" id="save">${d.isNew?"Publier":"Enregistrer"}</button><span class="hint" id="status"></span></div>
@@ -626,7 +661,7 @@ function renderEditor(m){
         const path=Date.now()+"-"+Math.random().toString(36).slice(2,8)+".jpg";
         const {error}=await S.sb.storage.from("images").upload(path,blob,{contentType:"image/jpeg"});
         if(error) throw error;
-        d.images.push(path); if(!d.cover) d.cover=path;
+        d.images.push(path); if(!d.cover) d.cover=path; S.blobs=S.blobs||{}; S.blobs[path]=blob;
         const token=`\n[image:${path}]\n`; const ta=$("#f-body");
         if(ta){ta.setRangeText(token,ta.selectionStart,ta.selectionEnd,"end");d.body=ta.value}else d.body+=token;
       }catch(e){toast("Image non envoyée : "+(e.message||e))}
@@ -640,8 +675,12 @@ function drawThumbs(){
   const d=S.draft,box=$("#thumbs"); if(!box) return;
   box.innerHTML=d.images.length?"":`<span class="hint">Aucune image pour l'instant. Utilisez « + Images ».</span>`;
   d.images.forEach(p=>{
+    const w=document.createElement("div"); w.className="tw";
     const t=document.createElement("div"); t.className="t"+(d.cover===p?" cover":"");
     t.innerHTML=`<img alt=""><button type="button">Retirer</button>`;
+    const ob=document.createElement("button"); ob.type="button"; ob.className="ocr"; ob.textContent="Extraire le texte";
+    ob.onclick=()=>extractText(p,ob);
+    w.appendChild(t); w.appendChild(ob);
     t.querySelector("img").src=imgUrl(p);
     t.querySelector("img").onclick=()=>{d.cover=p;drawThumbs()};
     t.querySelector("button").onclick=()=>{
@@ -649,7 +688,7 @@ function drawThumbs(){
       d.body=d.body.split("[image:"+p+"]").join("");
       const ta=$("#f-body"); if(ta) ta.value=d.body; drawThumbs();
     };
-    box.appendChild(t);
+    box.appendChild(w);
   });
 }
 async function save(){
@@ -725,8 +764,7 @@ window.addEventListener("hashchange",route);
 /* Image en grand */
 function openLb(src){
   closeLb(true);
-  const d=document.createElement("div"); d.className="lb"; d.innerHTML=`<span>Fermer ✕</span><img alt=""><div class="lbbar"><a target="_blank" rel="noopener">🌐 Traduire · Translate</a><button type="button">Fermer · Close</button></div>`; d.querySelector("img").src=src;
-  d.querySelector("a").href=lensUrl(src);
+  const d=document.createElement("div"); d.className="lb"; d.innerHTML=`<span>Fermer ✕</span><img alt=""><div class="lbbar"><button type="button">Fermer · Close</button></div>`; d.querySelector("img").src=src;
   d.querySelector(".lbbar").onclick=e=>{ if(e.target.tagName!=="BUTTON") e.stopPropagation(); };
   d.onclick=()=>history.back();
   document.body.appendChild(d); S.lb=d; history.pushState({lb:1},"");
