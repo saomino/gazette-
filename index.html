@@ -134,6 +134,24 @@ img{max-width:100%}
 .login{max-width:420px;margin:0 auto;padding-block:40px;display:grid;gap:14px}
 .login h2{font-family:var(--display);font-size:40px;text-transform:uppercase;margin:0}
 .err{color:var(--danger);font-size:15px}
+.social{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);display:grid;gap:16px}
+.likebtn{justify-self:start;display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:8px 16px;font-family:var(--mono);font-size:14px}
+.likebtn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--soft)}
+.likebtn .h{font-size:18px;line-height:1}
+.coms{display:grid;gap:12px}
+.com{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.com .who{font-weight:600}
+.com .when{color:var(--muted);font-family:var(--mono);font-size:11px;margin-left:6px}
+.com .txt{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}
+.com .del{background:none;border:0;color:var(--danger);font-family:var(--mono);font-size:12px;padding:0;margin-top:6px}
+.comform{display:grid;gap:8px}
+.comform input,.comform textarea{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px;width:100%}
+.comform textarea{min-height:80px;resize:vertical}
+.counts{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+.lb{position:fixed;inset:0;z-index:30;background:rgba(5,8,12,.94);display:grid;place-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px));overflow:auto}
+.lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.lb span{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:14px;color:#fff;font-family:var(--mono);font-size:13px;background:rgba(255,255,255,.12);padding:6px 10px;border-radius:6px}
+.article .prose img,.article figure img{cursor:zoom-in}
 .pseudo{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--soft);padding:10px 12px;border-radius:6px;margin-top:14px}
 .pseudo input{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px;flex:1 1 180px;min-width:0}
 </style>
@@ -224,24 +242,104 @@ async function loadArticles(){
   S.loaded=true;
   if(error){S.error="Impossible de charger les articles ("+error.message+")."}
   else{S.error=null;S.articles=data}
+  loadCounts();
   if(S.view!=="editor") render();
+}
+
+
+/* ---------- Likes et commentaires ---------- */
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let DEVICE=store.get("gazette-appareil");
+if(!DEVICE){DEVICE=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("gazette-appareil",DEVICE)}
+const liked=()=>{try{return JSON.parse(store.get("gazette-likes")||"[]")}catch(e){return[]}};
+S.likes={};S.ncom={};
+async function rest(path){
+  const r=await withTimeout(fetch(SUPABASE_URL+"/rest/v1/"+path,{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY}}),15000,"chargement");
+  if(!r.ok) throw new Error("code "+r.status);
+  return r.json();
+}
+async function loadCounts(){
+  try{
+    const [l,c]=await Promise.all([rest("likes_compte?select=*"),rest("commentaires_compte?select=*")]);
+    S.likes={};l.forEach(x=>S.likes[x.article_id]=x.n);
+    S.ncom={};c.forEach(x=>S.ncom[x.article_id]=x.n);
+    if(S.view==="list") render();
+  }catch(e){}
+}
+const countsLine=a=>{const l=S.likes[a.id]||0,c=S.ncom[a.id]||0;return (l||c)?`<div class="counts">♥ ${l} · ${c} commentaire${c>1?"s":""}</div>`:""};
+async function renderSocial(a){
+  const box=$("#social"); if(!box) return;
+  const isLiked=liked().includes(a.id);
+  box.innerHTML=`<button class="likebtn" id="like" aria-pressed="${isLiked}"><span class="h">${isLiked?"♥":"♡"}</span><span>J'aime · ${S.likes[a.id]||0}</span></button>
+  <h3 class="mono" style="margin:6px 0 0">Commentaires</h3>
+  <div class="coms" id="coms"><p class="hint" style="margin:0">Chargement…</p></div>
+  <form class="comform" id="cf"><label class="mono" for="cm-pseudo" style="color:var(--muted)">Votre pseudo</label><input id="cm-pseudo" maxlength="40" required value="${esc(store.get("gazette-pseudo")||pseudo()||"")}">
+  <label class="mono" for="cm-txt" style="color:var(--muted)">Votre commentaire</label><textarea id="cm-txt" maxlength="1000" required></textarea>
+  <div class="err" id="cmerr"></div><div><button class="btn" type="submit" id="cmbtn">Publier le commentaire</button></div></form>`;
+  $("#like").onclick=async()=>{
+    const b=$("#like"); b.disabled=true;
+    const {data,error}=await S.sb.rpc("aimer",{aid:a.id,dev:DEVICE});
+    b.disabled=false;
+    if(error) return toast("Impossible pour le moment : "+error.message);
+    let L=liked(); const nowLiked=!L.includes(a.id);
+    L=nowLiked?[...L,a.id]:L.filter(x=>x!==a.id); store.set("gazette-likes",JSON.stringify(L));
+    S.likes[a.id]=typeof data==="number"?data:(S.likes[a.id]||0)+(nowLiked?1:-1);
+    renderSocialLike(a);
+  };
+  $("#cf").onsubmit=async e=>{
+    e.preventDefault(); const ps=$("#cm-pseudo").value.trim(), tx=$("#cm-txt").value.trim();
+    if(!ps||!tx) return;
+    $("#cmbtn").disabled=true; $("#cmerr").textContent="";
+    const {error}=await S.sb.from("commentaires").insert({article_id:a.id,pseudo:ps.slice(0,40),texte:tx.slice(0,1000)});
+    $("#cmbtn").disabled=false;
+    if(error){$("#cmerr").textContent="Commentaire non publié : "+error.message;return}
+    store.set("gazette-pseudo",ps); $("#cm-txt").value=""; toast("Commentaire publié");
+    loadComs(a);
+  };
+  loadComs(a);
+}
+function renderSocialLike(a){
+  const b=$("#like"); if(!b) return; const on=liked().includes(a.id);
+  b.setAttribute("aria-pressed",on); b.querySelector(".h").textContent=on?"♥":"♡"; b.lastElementChild.textContent="J'aime · "+(S.likes[a.id]||0);
+}
+async function loadComs(a){
+  const box=$("#coms"); if(!box) return;
+  let list=[];
+  try{list=await rest("commentaires?select=*&article_id=eq."+encodeURIComponent(a.id)+"&order=created_at.asc&limit=500")}
+  catch(e){box.innerHTML=`<p class="hint" style="margin:0">Commentaires indisponibles pour le moment.</p>`;return}
+  if(S.openId!==a.id) return;
+  S.ncom[a.id]=list.length;
+  box.innerHTML=list.length?"":`<p class="hint" style="margin:0">Aucun commentaire. Soyez le premier !</p>`;
+  list.forEach(c=>{
+    const d=document.createElement("div"); d.className="com";
+    d.innerHTML=`<span class="who"></span><span class="when"></span><div class="txt"></div>${S.admin?'<button class="del" type="button">Supprimer</button>':""}`;
+    d.querySelector(".who").textContent=c.pseudo; d.querySelector(".when").textContent=fmtTime(c.created_at); d.querySelector(".txt").textContent=c.texte;
+    const del=d.querySelector(".del");
+    if(del) del.onclick=async()=>{
+      if(del.dataset.c!=="1"){del.dataset.c="1";del.textContent="Confirmer la suppression";return}
+      const {error}=await S.sb.from("commentaires").delete().eq("id",c.id);
+      if(error) return toast("Suppression impossible : "+error.message);
+      toast("Commentaire supprimé"); loadComs(a);
+    };
+    box.appendChild(d);
+  });
 }
 
 /* ---------- Rendu ---------- */
 function renderNav(){
   const n=$("#nav"); n.innerHTML="";
   const mk=(label,pressed,fn)=>{const b=document.createElement("button");b.className="chip";b.textContent=label;b.setAttribute("aria-pressed",pressed);b.onclick=fn;n.appendChild(b)};
-  ["Tout",...CATS].forEach(c=>mk(c==="Tout"?"À la une":(c==="Divers"?"Divers":c+"s"),S.view==="list"&&S.cat===c,()=>{S.view="list";S.cat=c;render()}));
-  if(S.admin) mk("Salon des admins",S.view==="salon",()=>{S.view="salon";render()});
-  if(S.chef){const n2=S.team.filter(x=>x.status==="en_attente").length;mk("Équipe"+(n2?" ("+n2+" demande"+(n2>1?"s":"")+")":""),S.view==="equipe",()=>{S.view="equipe";render()})}
+  ["Tout",...CATS].forEach(c=>mk(c==="Tout"?"À la une":(c==="Divers"?"Divers":c+"s"),S.view==="list"&&S.cat===c,()=>{S.cat=c;go("")}));
+  if(S.admin) mk("Salon des admins",S.view==="salon",()=>go("salon"));
+  if(S.chef){const n2=S.team.filter(x=>x.status==="en_attente").length;mk("Équipe"+(n2?" ("+n2+" demande"+(n2>1?"s":"")+")":""),S.view==="equipe",()=>go("equipe"))}
   const sp=document.createElement("span");sp.className="spacer";n.appendChild(sp);
   if(S.admin){const b=document.createElement("button");b.className="btn";b.textContent="Écrire un article";b.onclick=()=>openEditor(null);n.appendChild(b)}
   const al=$("#authLink"); al.innerHTML="";
   const addL=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.onclick=fn;b.style.marginLeft="14px";al.appendChild(b)};
   if(S.session){
-    addL("Mon compte",()=>{S.view="compte";render();scrollTo(0,0)});
-    addL("Déconnexion",async()=>{await S.sb.auth.signOut();S.view="list";toast("Déconnecté")});
-  } else addL("Connexion admin",()=>{S.view="login";render();scrollTo(0,0)});
+    addL("Mon compte",()=>go("compte"));
+    addL("Déconnexion",async()=>{await S.sb.auth.signOut();toast("Déconnecté");go("")});
+  } else addL("Connexion admin",()=>go("login"));
   const pb=$("#pseudoBox");
   if(S.session&&S.me&&S.me.status==="en_attente"){
     pb.innerHTML=`<div class="notice">Votre demande pour devenir admin est envoyée. Le chef de la Gazette doit la valider : revenez un peu plus tard.</div>`;
@@ -277,9 +375,9 @@ function renderList(m){
     const f=$("#first"); if(f) f.onclick=()=>openEditor(null); return;
   }
   const [lead,...rest]=list;
-  m.innerHTML=`<article class="lead" data-id="${esc(lead.id)}">${cover(lead)}<div style="min-width:0"><div class="mono"><span class="tag">${esc(lead.cat)}</span></div><h2>${esc(lead.title)}</h2><p>${esc(lead.deck||"")}</p><div class="meta mono">${esc(lead.author_name||"La rédaction")} · ${fmtDate(lead.created_at)}</div></div></article>
-  <section class="grid">${rest.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${esc(a.title)}</h3><p>${esc(a.deck||"")}</p></article>`).join("")}</section>`;
-  m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>{S.view="article";S.openId=el.dataset.id;location.hash=el.dataset.id;render();scrollTo(0,0)});
+  m.innerHTML=`<article class="lead" data-id="${esc(lead.id)}">${cover(lead)}<div style="min-width:0"><div class="mono"><span class="tag">${esc(lead.cat)}</span></div><h2>${esc(lead.title)}</h2><p>${esc(lead.deck||"")}</p><div class="meta mono">${esc(lead.author_name||"La rédaction")} · ${fmtDate(lead.created_at)}</div>${countsLine(lead)}</div></article>
+  <section class="grid">${rest.map(a=>`<article class="card" data-id="${esc(a.id)}">${cover(a)}<div class="mono"><span class="tag">${esc(a.cat)}</span> · ${fmtDate(a.created_at)}</div><h3>${esc(a.title)}</h3><p>${esc(a.deck||"")}</p>${countsLine(a)}</article>`).join("")}</section>`;
+  m.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>go(el.dataset.id));
 }
 function renderArticle(m){
   if(!S.loaded){m.innerHTML=`<div class="empty"><p class="mono">Chargement…</p></div>`;return}
@@ -291,8 +389,10 @@ function renderArticle(m){
   <div class="byline mono"><span>${esc(a.author_name||"La rédaction")}</span><span>·</span><span>${fmtDate(a.created_at)}</span>${a.edited_at?`<span>· modifié le ${fmtDate(a.edited_at)}</span>`:""}</div>
   ${a.cover&&!String(a.body||"").includes("[image:"+a.cover+"]")?`<figure style="margin:0 0 20px"><img src="${esc(imgUrl(a.cover))}" alt="" style="width:100%;border-radius:4px"></figure>`:""}
   <div class="prose">${md(a.body)}</div>
-  ${S.admin?`<div class="actions" id="acts"><button class="btn ghost" id="edit">Modifier</button><button class="btn danger" id="del">Supprimer</button></div>`:""}</div>`;
-  $("#back").onclick=()=>{S.view="list";history.replaceState(null,"",location.pathname);render()};
+  <section class="social" id="social"></section>
+  ${S.admin?`<div class="actions" id="acts"><button class="btn ghost" id="edit">Modifier l'article</button><button class="btn danger" id="del">Supprimer l'article</button></div>`:""}</div>`;
+  $("#back").onclick=goBack;
+  if(S.sb) renderSocial(a);
   if(S.admin){
     $("#edit").onclick=()=>openEditor(a);
     $("#del").onclick=()=>{
@@ -302,7 +402,7 @@ function renderArticle(m){
         const {error}=await S.sb.from("articles").delete().eq("id",a.id);
         if(error) return toast("Suppression impossible : "+error.message);
         if(a.images&&a.images.length) await S.sb.storage.from("images").remove(a.images);
-        toast("Article supprimé"); S.view="list"; history.replaceState(null,"",location.pathname); loadArticles();
+        toast("Article supprimé"); location.replace("#"); loadArticles();
       };
     };
   }
@@ -317,13 +417,13 @@ function renderLogin(m){
   <div class="err" id="lerr"></div>
   <div class="row"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" id="lback">Annuler</button></div>
   <p class="hint">Pas encore admin ? <a href="#rejoindre" id="tojoin" style="color:var(--accent)">Faire une demande</a></p></form>`;
-  $("#tojoin").onclick=e=>{e.preventDefault();S.view="rejoindre";location.hash="rejoindre";render()};
-  $("#lback").onclick=()=>{S.view="list";render()};
+  $("#tojoin").onclick=e=>{e.preventDefault();go("rejoindre")};
+  $("#lback").onclick=goBack;
   $("#lf").onsubmit=async e=>{
     e.preventDefault(); $("#lerr").textContent="";
     const {error}=await S.sb.auth.signInWithPassword({email:$("#f-email").value.trim(),password:$("#f-pass").value});
-    if(error) $("#lerr").textContent="Connexion refusée : vérifiez l'e-mail et le mot de passe.";
-    else {S.view="list";toast("Connecté")}
+    if(error){const msg=error.message||"";$("#lerr").textContent=/confirm/i.test(msg)?"Votre adresse e-mail n'est pas encore confirmée. Demandez au chef de la Gazette de la confirmer.":/invalid/i.test(msg)?"E-mail ou mot de passe incorrect.":"Connexion impossible : "+msg;}
+    else {toast("Connecté");location.replace("#")}
   };
 }
 
@@ -348,7 +448,7 @@ async function savePseudo(v){
   S.me={...S.me,pseudo:v}; toast("Pseudo enregistré"); render();
 }
 function renderJoin(m){
-  if(S.session){S.view="list";return render()}
+  if(S.session){m.innerHTML=`<div class="login"><h2>Vous avez déjà un compte</h2><p>Vous êtes connecté${S.admin?" en tant qu'admin":""}. Plus besoin de ce lien : utilisez l'adresse normale de la Gazette.</p><div><button class="btn" id="jhome">Aller à la Gazette</button></div></div>`;$("#jhome").onclick=()=>location.replace("#");return}
   m.innerHTML=`<form class="login" id="jf"><h2>Devenir admin</h2>
   <p class="hint" style="margin:0">Remplissez ce formulaire : votre demande sera envoyée au chef de la Gazette. Vous pourrez publier dès qu'il l'aura acceptée.</p>
   <div class="field"><label class="mono" for="j-pseudo">Pseudo (celui du jeu)</label><input id="j-pseudo" maxlength="40" required></div>
@@ -357,7 +457,7 @@ function renderJoin(m){
   <div class="field"><label class="mono" for="j-pass2">Confirmer le mot de passe</label><input id="j-pass2" type="password" minlength="8" autocomplete="new-password" required></div>
   <div class="err" id="jerr"></div>
   <div class="row"><button class="btn" type="submit" id="jbtn">Envoyer ma demande</button><button class="btn ghost" type="button" id="jback">Annuler</button></div></form>`;
-  $("#jback").onclick=()=>{S.view="list";history.replaceState(null,"",location.pathname);render()};
+  $("#jback").onclick=goBack;
   $("#jf").onsubmit=async e=>{
     e.preventDefault(); const err=$("#jerr"); err.textContent="";
     const ps=$("#j-pseudo").value.trim(), em=$("#j-email").value.trim(), p1=$("#j-pass").value, p2=$("#j-pass2").value;
@@ -366,9 +466,8 @@ function renderJoin(m){
     const {data,error}=await S.sb.auth.signUp({email:em,password:p1,options:{data:{pseudo:ps}}});
     $("#jbtn").disabled=false;
     if(error){err.textContent=/registered|exists/i.test(error.message)?"Cette adresse a déjà un compte : utilisez « Connexion admin ».":/signups? not allowed|disabled/i.test(error.message)?"Les demandes sont fermées pour le moment. Contactez le chef de la Gazette.":"Demande impossible : "+error.message;return}
-    history.replaceState(null,"",location.pathname);
     if(!data.session){m.innerHTML=`<div class="login"><h2>Presque fini</h2><p>Un e-mail de confirmation vous a été envoyé. Cliquez sur le lien qu'il contient, puis connectez-vous avec « Connexion admin ».</p></div>`;return}
-    toast("Demande envoyée"); S.view="list";
+    toast("Demande envoyée"); location.replace("#"); setTimeout(async()=>{try{await loadMe()}catch(e){} render()},300);
   };
 }
 function renderCompte(m){
@@ -377,7 +476,7 @@ function renderCompte(m){
   <form class="field" id="cp"><label class="mono" for="c-pseudo">Pseudo d'auteur</label><div class="send"><input id="c-pseudo" maxlength="40" value="${esc(pseudo())}" style="flex:1;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px"><button class="btn" type="submit">Enregistrer</button></div></form>
   <form class="field" id="cw"><label class="mono" for="c-pass">Nouveau mot de passe (8 caractères minimum)</label><input id="c-pass" type="password" minlength="8" autocomplete="new-password" required><input id="c-pass2" type="password" minlength="8" autocomplete="new-password" placeholder="Confirmer" required><div class="err" id="cerr"></div><div><button class="btn" type="submit">Changer le mot de passe</button></div></form>
   <div><button class="btn ghost" id="cback">← Retour à la une</button></div></div>`;
-  $("#cback").onclick=()=>{S.view="list";render()};
+  $("#cback").onclick=goBack;
   $("#cp").onsubmit=async e=>{e.preventDefault();const v=$("#c-pseudo").value.trim();if(v)await savePseudo(v)};
   $("#cw").onsubmit=async e=>{
     e.preventDefault();const a=$("#c-pass").value,b=$("#c-pass2").value;
@@ -431,7 +530,7 @@ async function act(kind,x,rowEl){
 function openEditor(a){
   S.draft=a?{id:a.id,title:a.title,cat:a.cat,deck:a.deck||"",body:a.body||"",cover:a.cover||null,images:[...(a.images||[])],isNew:false,preview:false}
            :{id:null,title:"",cat:"Annonce",deck:"",body:"",cover:null,images:[],isNew:true,preview:false};
-  S.view="editor"; render(); scrollTo(0,0);
+  go("ecrire");
 }
 function renderEditor(m){
   const d=S.draft;
@@ -453,7 +552,7 @@ function renderEditor(m){
   const body=$("#f-body");
   const sync=()=>{d.title=$("#f-title").value;d.cat=$("#f-cat").value;d.deck=$("#f-deck").value;if(body)d.body=body.value};
   ["f-title","f-cat","f-deck","f-body"].forEach(id=>{const el=document.getElementById(id);if(el)el.oninput=sync});
-  $("#cancel").onclick=()=>{S.view=d.isNew?"list":"article";render()};
+  $("#cancel").onclick=()=>{S.draft=null;goBack()};
   $("#prev").onclick=()=>{sync();d.preview=!d.preview;renderEditor(m)};
   m.querySelectorAll("[data-ins]").forEach(b=>b.onclick=()=>{if(!body)return;const s=body.selectionStart;const ls=body.value.lastIndexOf("\n",s-1)+1;body.setRangeText(b.dataset.ins,ls,ls,"end");body.focus();sync()});
   m.querySelectorAll("[data-wrap]").forEach(b=>b.onclick=()=>{if(!body)return;const w=b.dataset.wrap,s=body.selectionStart,e=body.selectionEnd;body.setRangeText(w+(body.value.slice(s,e)||"texte")+w,s,e,"end");body.focus();sync()});
@@ -507,8 +606,7 @@ async function save(){
   else res=await S.sb.from("articles").update({...row,edited_at:new Date().toISOString()}).eq("id",d.id).select().single();
   if(res.error){$("#save").disabled=false;st.textContent="Publication impossible : "+res.error.message;return}
   toast(d.isNew?"Article publié":"Modifications enregistrées");
-  S.openId=res.data.id; S.view="article"; location.hash=res.data.id;
-  await loadArticles(); render(); scrollTo(0,0);
+  const wasNew=d.isNew; S.draft=null; await loadArticles(); if(!wasNew&&S.inApp&&history.length>1) history.back(); else location.replace("#"+res.data.id);
 }
 
 /* ---------- Salon des admins ---------- */
@@ -547,6 +645,37 @@ function drawMsgs(){
   if(atBottom||!drawMsgs._done){box.scrollTop=box.scrollHeight;drawMsgs._done=true}
 }
 
+/* ---------- Navigation (bouton retour du téléphone) ---------- */
+const PAGES=["rejoindre","salon","equipe","compte","login"];
+function toTop(){requestAnimationFrame(()=>{window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0})}
+function route(){
+  closeLb(true);
+  const h=decodeURIComponent(location.hash.slice(1));
+  if(!h) S.view="list";
+  else if(PAGES.includes(h)) S.view=h;
+  else if(h==="ecrire") S.view=S.draft?"editor":"list";
+  else {S.view="article";S.openId=h}
+  render(); toTop();
+}
+function go(h){
+  S.inApp=true;
+  if(decodeURIComponent(location.hash.slice(1))===h) route(); else location.hash=h;
+}
+function goBack(){ if(S.inApp&&history.length>1) history.back(); else location.replace("#"); }
+window.addEventListener("hashchange",route);
+/* Image en grand */
+function openLb(src){
+  closeLb(true);
+  const d=document.createElement("div"); d.className="lb"; d.innerHTML=`<span>Fermer ✕</span><img alt="">`; d.querySelector("img").src=src;
+  d.onclick=()=>history.back();
+  document.body.appendChild(d); S.lb=d; history.pushState({lb:1},"");
+}
+function closeLb(silent){ if(S.lb){S.lb.remove();S.lb=null} }
+window.addEventListener("popstate",()=>{ if(S.lb) closeLb(); });
+document.addEventListener("click",e=>{
+  const img=e.target.closest(".article img"); if(img&&img.src) {e.preventDefault();openLb(img.src)}
+});
+
 /* ---------- Démarrage ---------- */
 function showDiag(msg){
   let d=document.getElementById("diag");
@@ -564,8 +693,7 @@ const withTimeout=(p,ms,label)=>Promise.race([p,new Promise((_,rej)=>setTimeout(
   }
   try{ S.sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,lock:async(_name,_timeout,fn)=>await fn()}}); }
   catch(e){ S.loaded=true; S.error="Connexion à la base impossible ("+e.message+")."; render(); return; }
-  const h=location.hash.slice(1); if(h==="rejoindre"){S.view="rejoindre"} else if(h){S.view="article";S.openId=h}
-  render();
+  route();
   loadArticles().catch(e=>{S.loaded=true;S.error="Impossible de charger les articles ("+e.message+").";render()});
   try{
     const r=await withTimeout(S.sb.auth.getSession(),10000,"session");
@@ -578,6 +706,17 @@ const withTimeout=(p,ms,label)=>Promise.race([p,new Promise((_,rej)=>setTimeout(
     if(changed||ev==="SIGNED_OUT"){setTimeout(async()=>{try{await loadMe()}catch(e){showDiag(e.message)}if(S.view!=="editor")render()},0)}
   });
   if(S.view!=="editor") render();
+  /* Une demande en attente se met à jour toute seule dès que le chef l'accepte */
+  const recheck=async()=>{
+    if(!S.session||!S.me||S.me.status!=="en_attente"||document.hidden) return;
+    try{await loadMe()}catch(e){return}
+    if(S.admin){toast("Votre demande est acceptée : vous êtes admin !");location.replace("#");route()}
+  };
+  setInterval(recheck,10000);
+  document.addEventListener("visibilitychange",recheck);
+  window.addEventListener("focus",recheck);
+  /* Le chef voit arriver les nouvelles demandes sans recharger */
+  setInterval(async()=>{if(S.chef&&!document.hidden&&S.view!=="editor"){const before=S.team.length;await loadTeam();if(S.team.length!==before)render()}},20000);
 })();
 </script>
 </body>
