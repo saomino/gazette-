@@ -153,6 +153,16 @@ img{max-width:100%}
 .search button{background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:12px;padding:6px}
 .results{padding-top:20px;color:var(--muted)}
 mark{background:var(--soft);color:inherit;padding:0 2px;border-radius:2px}
+.ocrm{position:fixed;inset:0;z-index:40;background:#05080c;overflow:auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(20px + env(safe-area-inset-bottom,0px))}
+.ocrbox{max-width:900px;margin:0 auto;display:grid;gap:12px}
+.ocrstage{position:relative;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0}
+.ocrstage img{max-width:100%;max-height:60vh;display:block;margin:0 auto;-webkit-user-drag:none}
+.ocrstage .sel{position:absolute;border:2px solid #e2a93b;background:rgba(226,169,59,.18);pointer-events:none}
+.ocract{display:flex;gap:8px;flex-wrap:wrap}
+.ocrm .btn.ghost{color:#fff;border-color:rgba(255,255,255,.3)}
+.ocrst{color:#c9d1dc;font-size:12px;text-transform:none;letter-spacing:0;min-height:1em}
+.ocrfound{display:grid;gap:8px}
+.ocrg{white-space:pre-wrap;background:rgba(255,255,255,.08);color:#fff;border-radius:6px;padding:10px 12px;font-size:15px}
 .tw{display:grid;gap:4px;width:110px}
 .tw .t{width:110px;height:80px}
 .tw .ocr{border:1px solid var(--line);background:var(--paper);border-radius:6px;font-family:var(--mono);font-size:11px;padding:5px 4px;color:var(--accent)}
@@ -182,7 +192,7 @@ figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
   <div class="search" id="searchBar"><label for="q" hidden>Rechercher</label><input id="q" type="search" placeholder="Rechercher un article (ex. : équipe, dragon…)" autocomplete="off" enterkeyhint="search"><button type="button" id="qclear" hidden>Effacer ✕</button></div>
   <div id="pseudoBox"></div>
   <main id="main"></main>
-  <footer class="foot mono"><span>La Gazette de LGS · v11</span><span id="authLink"></span></footer>
+  <footer class="foot mono"><span>La Gazette de LGS · v12</span><span id="authLink"></span></footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -596,28 +606,81 @@ async function act(kind,x,rowEl){
 /* ---------- Lecture du texte des images (OCR) ---------- */
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("module de lecture indisponible"));document.head.appendChild(s)})}
 const escRe=t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-async function extractText(path,btn){
-  const d=S.draft; const st=$("#status"); const ta=$("#f-body");
-  if(d.preview){toast("Repassez en mode « Éditer » d'abord");return}
-  btn.disabled=true; const label=btn.textContent; btn.textContent="Lecture…";
-  try{
-    if(!window.Tesseract){st.textContent="Chargement du module de lecture (une seule fois)…";await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js")}
-    const worker=await Tesseract.createWorker(["fra","eng"],1,{logger:m=>{if(m.status==="recognizing text")st.textContent="Lecture du texte de l'image… "+Math.round(m.progress*100)+" %";else st.textContent="Préparation de la lecture…"}});
-    const src=(S.blobs&&S.blobs[path])||imgUrl(path);
-    const {data}=await worker.recognize(src);
-    await worker.terminate();
-    const ok=x=>(x.match(/[A-Za-zÀ-ÿ0-9]/g)||[]).length>=2;
-    const groups=String(data.text||"").split(/\n\s*\n/).map(g=>g.split("\n").map(x=>x.replace(/\s+/g," ").trim()).filter(ok)).filter(g=>g.length);
-    if(!groups.length){st.textContent="";toast("Aucun texte lisible trouvé dans cette image");return}
-    const block="\n\n> **Texte de l'image :**\n"+groups.map(g=>g.map(x=>"> "+x).join("\n")).join("\n>\n")+"\n";
-    if(ta) d.body=ta.value;
+async function ocrWorker(onProgress){
+  if(!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  if(!S.ocrW) S.ocrW=await Tesseract.createWorker(["fra","eng"],1,{logger:m=>{S.ocrLog&&S.ocrLog(m)}});
+  S.ocrLog=onProgress; return S.ocrW;
+}
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin="anonymous";im.onload=()=>res(im);im.onerror=()=>rej(new Error("image illisible"));im.src=src})}
+/* Prépare une zone : agrandie, noir et blanc, contrastée, texte clair inversé */
+function prepZone(im,r){
+  const scale=Math.max(1,Math.min(3,1400/Math.max(r.w,r.h)));
+  const c=document.createElement("canvas"); c.width=Math.round(r.w*scale); c.height=Math.round(r.h*scale);
+  const x=c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high";
+  x.drawImage(im,r.x,r.y,r.w,r.h,0,0,c.width,c.height);
+  const d=x.getImageData(0,0,c.width,c.height),p=d.data; let sum=0,min=255,max=0;
+  for(let i=0;i<p.length;i+=4){const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];p[i]=g;sum+=g;if(g<min)min=g;if(g>max)max=g}
+  const mean=sum/(p.length/4), inv=mean<128, span=Math.max(1,max-min);
+  for(let i=0;i<p.length;i+=4){let g=(p[i]-min)*255/span;if(inv)g=255-g;p[i]=p[i+1]=p[i+2]=g}
+  x.putImageData(d,0,0); return c;
+}
+async function readZone(im,r,st){
+  const w=await ocrWorker(m=>{if(m.status==="recognizing text")st.textContent="Lecture… "+Math.round(m.progress*100)+" %";else st.textContent="Préparation de la lecture (la 1re fois peut prendre 30 s)…"});
+  const {data}=await w.recognize(prepZone(im,r),{},{text:true,blocks:true});
+  const ok=t=>{const letters=(t.match(/[A-Za-zÀ-ÿ]/g)||[]).length, all=t.replace(/\s/g,"").length; return letters>=3&&letters/Math.max(1,all)>=0.6};
+  const groups=[];
+  if(data.blocks&&data.blocks.length){
+    data.blocks.forEach(b=>(b.paragraphs||[]).forEach(pg=>{
+      const lines=(pg.lines||[]).filter(l=>l.confidence>=55).map(l=>l.text.replace(/\s+/g," ").trim()).filter(ok);
+      if(lines.length) groups.push(lines);
+    }));
+  } else {
+    String(data.text||"").split(/\n\s*\n/).forEach(g=>{const lines=g.split("\n").map(x=>x.replace(/\s+/g," ").trim()).filter(ok);if(lines.length)groups.push(lines)});
+  }
+  return groups;
+}
+async function extractText(path){
+  const d=S.draft; if(d.preview){toast("Repassez en mode « Éditer » d'abord");return}
+  const ta=$("#f-body"); if(ta) d.body=ta.value;
+  const src=(S.blobs&&S.blobs[path])?URL.createObjectURL(S.blobs[path]):imgUrl(path);
+  let im; try{im=await loadImg(src)}catch(e){toast("Impossible d'ouvrir cette image");return}
+  const found=[];
+  const ov=document.createElement("div"); ov.className="ocrm";
+  ov.innerHTML=`<div class="ocrbox"><p class="mono" style="margin:0;color:#fff">Dessinez un cadre avec le doigt autour du texte à lire. Vous pouvez lire plusieurs zones, dans l'ordre voulu.</p>
+  <div class="ocrstage"><img alt=""><div class="sel" hidden></div></div>
+  <div class="ocract"><button class="btn" id="oz" disabled>Lire cette zone</button><button class="btn ghost" id="oall">Lire toute l'image</button></div>
+  <div class="ocrst mono" id="ost"></div>
+  <div class="ocrfound" id="ofound"></div>
+  <div class="ocract"><button class="btn" id="oadd" disabled>Ajouter à l'article</button><button class="btn ghost" id="ocancel">Annuler</button></div></div>`;
+  document.body.appendChild(ov);
+  const img=ov.querySelector("img"), stage=ov.querySelector(".ocrstage"), sel=ov.querySelector(".sel"), st=ov.querySelector("#ost");
+  img.src=src;
+  let start=null, rect=null;
+  const pos=e=>{const b=img.getBoundingClientRect();return{x:Math.min(Math.max(e.clientX-b.left,0),b.width),y:Math.min(Math.max(e.clientY-b.top,0),b.height),b}};
+  stage.addEventListener("pointerdown",e=>{e.preventDefault();stage.setPointerCapture(e.pointerId);start=pos(e);rect=null;sel.hidden=false;Object.assign(sel.style,{left:(start.x+img.offsetLeft)+"px",top:(start.y+img.offsetTop)+"px",width:"0px",height:"0px"})});
+  stage.addEventListener("pointermove",e=>{if(!start)return;const p=pos(e);const x=Math.min(p.x,start.x),y=Math.min(p.y,start.y),w=Math.abs(p.x-start.x),h=Math.abs(p.y-start.y);
+    Object.assign(sel.style,{left:(x+img.offsetLeft)+"px",top:(y+img.offsetTop)+"px",width:w+"px",height:h+"px"});
+    const k=im.naturalWidth/p.b.width; rect={x:Math.round(x*k),y:Math.round(y*k),w:Math.round(w*k),h:Math.round(h*k)}});
+  stage.addEventListener("pointerup",()=>{start=null;ov.querySelector("#oz").disabled=!(rect&&rect.w>10&&rect.h>10)});
+  const drawFound=()=>{const f=ov.querySelector("#ofound");f.innerHTML="";found.forEach((g,i)=>{const b=document.createElement("div");b.className="ocrg";b.textContent=g.join("\n");f.appendChild(b)});ov.querySelector("#oadd").disabled=!found.length};
+  const run=async r=>{
+    ov.querySelectorAll("button").forEach(b=>b.disabled=true);
+    try{const g=await readZone(im,r,st);if(!g.length)st.textContent="Rien de lisible dans cette zone. Essayez un cadre plus serré autour du texte.";else{g.forEach(x=>found.push(x));st.textContent="Zone lue. Vous pouvez en lire une autre ou ajouter le texte à l'article.";drawFound()}}
+    catch(e){st.textContent="Lecture impossible : "+(e.message||e)}
+    ov.querySelectorAll("button").forEach(b=>b.disabled=false); ov.querySelector("#oz").disabled=!(rect&&rect.w>10&&rect.h>10); ov.querySelector("#oadd").disabled=!found.length;
+  };
+  ov.querySelector("#oz").onclick=()=>{if(rect)run(rect)};
+  ov.querySelector("#oall").onclick=()=>run({x:0,y:0,w:im.naturalWidth,h:im.naturalHeight});
+  const close=()=>{ov.remove();if(src.startsWith("blob:"))URL.revokeObjectURL(src)};
+  ov.querySelector("#ocancel").onclick=close;
+  ov.querySelector("#oadd").onclick=()=>{
+    const block="\n\n> **Texte de l'image :**\n"+found.map(g=>g.map(x=>"> "+x).join("\n")).join("\n>\n")+"\n";
+    const ta=$("#f-body"); if(ta) d.body=ta.value;
     const re=new RegExp("\\[image:"+escRe(path)+"[^\\]]*\\]"); const m=re.exec(d.body);
     d.body=m?d.body.slice(0,m.index+m[0].length)+block+d.body.slice(m.index+m[0].length):d.body+block;
     if(ta) ta.value=d.body;
-    st.textContent="Texte ajouté sous l'image : relisez-le et corrigez-le si besoin.";
-    toast("Texte extrait");
-  }catch(e){st.textContent="";toast("Lecture impossible : "+(e.message||e))}
-  finally{btn.disabled=false;btn.textContent=label}
+    close(); toast("Texte ajouté sous l'image : relisez-le avant de publier");
+  };
 }
 
 /* ---------- Éditeur ---------- */
@@ -679,7 +742,7 @@ function drawThumbs(){
     const t=document.createElement("div"); t.className="t"+(d.cover===p?" cover":"");
     t.innerHTML=`<img alt=""><button type="button">Retirer</button>`;
     const ob=document.createElement("button"); ob.type="button"; ob.className="ocr"; ob.textContent="Extraire le texte";
-    ob.onclick=()=>extractText(p,ob);
+    ob.onclick=()=>extractText(p);
     w.appendChild(t); w.appendChild(ob);
     t.querySelector("img").src=imgUrl(p);
     t.querySelector("img").onclick=()=>{d.cover=p;drawThumbs()};
