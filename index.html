@@ -155,8 +155,8 @@ img{max-width:100%}
 mark{background:var(--soft);color:inherit;padding:0 2px;border-radius:2px}
 .ocrm{position:fixed;inset:0;z-index:40;background:#05080c;overflow:auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(20px + env(safe-area-inset-bottom,0px))}
 .ocrbox{max-width:900px;margin:0 auto;display:grid;gap:12px}
-.ocrstage{position:relative;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0}
-.ocrstage img{max-width:100%;max-height:60vh;display:block;margin:0 auto;-webkit-user-drag:none}
+.ocrstage{position:relative;touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;line-height:0}
+.ocrstage img{max-width:100%;max-height:60vh;display:block;margin:0 auto;-webkit-user-drag:none;pointer-events:none;-webkit-touch-callout:none}
 .ocrstage .sel{position:absolute;border:2px solid #e2a93b;background:rgba(226,169,59,.18);pointer-events:none}
 .ocract{display:flex;gap:8px;flex-wrap:wrap}
 .ocrm .btn.ghost{color:#fff;border-color:rgba(255,255,255,.3)}
@@ -192,7 +192,7 @@ figcaption{color:var(--muted);font-size:15px;margin-top:6px;font-style:italic}
   <div class="search" id="searchBar"><label for="q" hidden>Rechercher</label><input id="q" type="search" placeholder="Rechercher un article (ex. : équipe, dragon…)" autocomplete="off" enterkeyhint="search"><button type="button" id="qclear" hidden>Effacer ✕</button></div>
   <div id="pseudoBox"></div>
   <main id="main"></main>
-  <footer class="foot mono"><span>La Gazette de LGS · v12</span><span id="authLink"></span></footer>
+  <footer class="foot mono"><span>La Gazette de LGS · v13</span><span id="authLink"></span></footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -656,18 +656,29 @@ async function extractText(path){
   const img=ov.querySelector("img"), stage=ov.querySelector(".ocrstage"), sel=ov.querySelector(".sel"), st=ov.querySelector("#ost");
   img.src=src;
   let start=null, rect=null;
-  const pos=e=>{const b=img.getBoundingClientRect();return{x:Math.min(Math.max(e.clientX-b.left,0),b.width),y:Math.min(Math.max(e.clientY-b.top,0),b.height),b}};
-  stage.addEventListener("pointerdown",e=>{e.preventDefault();stage.setPointerCapture(e.pointerId);start=pos(e);rect=null;sel.hidden=false;Object.assign(sel.style,{left:(start.x+img.offsetLeft)+"px",top:(start.y+img.offsetTop)+"px",width:"0px",height:"0px"})});
-  stage.addEventListener("pointermove",e=>{if(!start)return;const p=pos(e);const x=Math.min(p.x,start.x),y=Math.min(p.y,start.y),w=Math.abs(p.x-start.x),h=Math.abs(p.y-start.y);
+  img.draggable=false;
+  const okRect=()=>!!(rect&&rect.w>10&&rect.h>10);
+  const pos=pt=>{const b=img.getBoundingClientRect();return{x:Math.min(Math.max(pt.clientX-b.left,0),b.width),y:Math.min(Math.max(pt.clientY-b.top,0),b.height),b}};
+  const begin=pt=>{start=pos(pt);rect=null;sel.hidden=false;Object.assign(sel.style,{left:(start.x+img.offsetLeft)+"px",top:(start.y+img.offsetTop)+"px",width:"0px",height:"0px"})};
+  const move=pt=>{if(!start)return;const p=pos(pt);const x=Math.min(p.x,start.x),y=Math.min(p.y,start.y),w=Math.abs(p.x-start.x),h=Math.abs(p.y-start.y);
     Object.assign(sel.style,{left:(x+img.offsetLeft)+"px",top:(y+img.offsetTop)+"px",width:w+"px",height:h+"px"});
-    const k=im.naturalWidth/p.b.width; rect={x:Math.round(x*k),y:Math.round(y*k),w:Math.round(w*k),h:Math.round(h*k)}});
-  stage.addEventListener("pointerup",()=>{start=null;ov.querySelector("#oz").disabled=!(rect&&rect.w>10&&rect.h>10)});
+    const k=im.naturalWidth/p.b.width; rect={x:Math.round(x*k),y:Math.round(y*k),w:Math.round(w*k),h:Math.round(h*k)}};
+  const end=()=>{if(!start)return;start=null;ov.querySelector("#oz").disabled=!okRect();st.textContent=okRect()?"Cadre prêt : appuyez sur « Lire cette zone ».":"Cadre trop petit : faites glisser le doigt en diagonale sur le texte."};
+  /* Doigt (écran tactile) */
+  stage.addEventListener("touchstart",e=>{if(e.touches.length!==1)return;e.preventDefault();begin(e.touches[0])},{passive:false});
+  stage.addEventListener("touchmove",e=>{if(!start)return;e.preventDefault();move(e.touches[0])},{passive:false});
+  stage.addEventListener("touchend",e=>{e.preventDefault();end()},{passive:false});
+  stage.addEventListener("touchcancel",()=>end());
+  /* Souris (ordinateur) */
+  stage.addEventListener("mousedown",e=>{e.preventDefault();begin(e)});
+  window.addEventListener("mousemove",e=>{if(start)move(e)});
+  window.addEventListener("mouseup",()=>end());
   const drawFound=()=>{const f=ov.querySelector("#ofound");f.innerHTML="";found.forEach((g,i)=>{const b=document.createElement("div");b.className="ocrg";b.textContent=g.join("\n");f.appendChild(b)});ov.querySelector("#oadd").disabled=!found.length};
   const run=async r=>{
     ov.querySelectorAll("button").forEach(b=>b.disabled=true);
     try{const g=await readZone(im,r,st);if(!g.length)st.textContent="Rien de lisible dans cette zone. Essayez un cadre plus serré autour du texte.";else{g.forEach(x=>found.push(x));st.textContent="Zone lue. Vous pouvez en lire une autre ou ajouter le texte à l'article.";drawFound()}}
     catch(e){st.textContent="Lecture impossible : "+(e.message||e)}
-    ov.querySelectorAll("button").forEach(b=>b.disabled=false); ov.querySelector("#oz").disabled=!(rect&&rect.w>10&&rect.h>10); ov.querySelector("#oadd").disabled=!found.length;
+    ov.querySelectorAll("button").forEach(b=>b.disabled=false); ov.querySelector("#oz").disabled=!okRect(); ov.querySelector("#oadd").disabled=!found.length;
   };
   ov.querySelector("#oz").onclick=()=>{if(rect)run(rect)};
   ov.querySelector("#oall").onclick=()=>run({x:0,y:0,w:im.naturalWidth,h:im.naturalHeight});
